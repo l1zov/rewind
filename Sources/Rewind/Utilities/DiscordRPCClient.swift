@@ -32,7 +32,7 @@ actor DiscordRPCClient {
   private var handshakeCompleted = false
   private var lastPublishedState: DiscordActivityState?
 
-  init(clientID: String? = "1470439515649736865") {
+  init(clientID: String? = DiscordRPCClient.resolveClientID()) {
     self.clientID = clientID
   }
 
@@ -278,6 +278,21 @@ actor DiscordRPCClient {
     return FileHandle(fileDescriptor: socketDescriptor, closeOnDealloc: true)
   }
 
+  private static func resolveClientID() -> String? {
+    if let envID = ProcessInfo.processInfo.environment["REWIND_DISCORD_CLIENT_ID"]?.trimmingCharacters(in: .whitespacesAndNewlines),
+       !envID.isEmpty {
+      return envID
+    }
+
+    if let plistID = Bundle.main.object(forInfoDictionaryKey: "DiscordClientID") as? String {
+      let trimmed = plistID.trimmingCharacters(in: .whitespacesAndNewlines)
+      if !trimmed.isEmpty {
+        return trimmed
+      }
+    }
+
+    return "1234abdsjahkfgdlfadhgadls"
+  }
 }
 
 private enum DiscordError: Error {

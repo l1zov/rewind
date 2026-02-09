@@ -17,7 +17,7 @@ final class SettingsWindowController: NSObject, NSWindowDelegate {
       window.title = "Settings"
       window.styleMask = [.titled, .closable, .miniaturizable]
       window.isReleasedWhenClosed = false
-      window.setContentSize(NSSize(width: 460, height: 580))
+      window.setContentSize(NSSize(width: 460, height: 500))
       window.center()
       window.delegate = self
       self.window = window
