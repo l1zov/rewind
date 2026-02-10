@@ -78,3 +78,69 @@ jobs:
             dist/*.zip
           overwrite_files: true
           fail_on_unmatched_files: true
+
+      - name: Compute Homebrew cask metadata
+        id: cask_meta
+        run: |
+          VERSION="${{ steps.version_meta.outputs.version }}"
+          TAG="${{ steps.version_meta.outputs.release_tag }}"
+          ZIP_PATH="dist/Rewind-${TAG}.zip"
+          SHA256="$(shasum -a 256 "${ZIP_PATH}" | cut -d ' ' -f 1)"
+
+          echo "version=${VERSION}" >> "${GITHUB_OUTPUT}"
+          echo "tag=${TAG}" >> "${GITHUB_OUTPUT}"
+          echo "sha256=${SHA256}" >> "${GITHUB_OUTPUT}"
+
+      - name: Validate Homebrew tap settings
+        env:
+          TAP_REPO: ${{ vars.HOMEBREW_TAP_REPO }}
+          TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+        run: |
+          if [ -z "${TAP_REPO}" ]; then
+            echo "missing tap repo secret" >&2
+            exit 1
+          fi
+
+          if [ -z "${TAP_TOKEN}" ]; then
+            echo "missing tap token secret" >&2
+            exit 1
+          fi
+
+      - name: Checkout Homebrew tap
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ vars.HOMEBREW_TAP_REPO }}
+          token: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+          path: tap
+
+      - name: Update Homebrew cask
+        env:
+          SOURCE_REPO: ${{ github.repository }}
+        run: |
+          mkdir -p "tap/Casks"
+          cat > "tap/Casks/rewind.rb" <<RUBY
+          cask "rewind" do
+            version "${{ steps.cask_meta.outputs.version }}"
+            sha256 "${{ steps.cask_meta.outputs.sha256 }}"
+
+            url "https://github.com/${SOURCE_REPO}/releases/download/v#{version}/Rewind-v#{version}.zip"
+            name "Rewind"
+            desc "Instant clipping for macOS"
+            homepage "https://github.com/${SOURCE_REPO}"
+
+            app "Rewind.app"
+
+            livecheck do
+              url :url
+              strategy :github_latest
+            end
+          end
+          RUBY
+
+      - name: Commit and push Homebrew tap update
+        run: |
+          git -C tap config user.name "github-actions[bot]"
+          git -C tap config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git -C tap add "Casks/rewind.rb"
+          git -C tap commit -m "cask(rewind): bump to ${{ steps.cask_meta.outputs.tag }}" || exit 0
+          git -C tap push
