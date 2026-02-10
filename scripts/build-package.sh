@@ -29,7 +29,7 @@ if [[ $# -gt 0 ]]; then
 fi
 
 if [[ $# -gt 0 ]]; then
-  echo "Usage: $0 [--version N|N]" >&2
+  echo "Usage: $0 [--version X.Y.Z|vX.Y.Z]" >&2
   exit 1
 fi
 
@@ -44,8 +44,10 @@ else
   VERSION="$(tr -d '[:space:]' < "${VERSION_FILE}")"
 fi
 
-if [[ ! "${VERSION}" =~ ^[0-9]+$ ]]; then
-  echo "version must be an integer like 3 (found '${VERSION}')" >&2
+VERSION="${VERSION#v}"
+
+if [[ ! "${VERSION}" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+  echo "not semantic" >&2
   exit 1
 fi
 
