@@ -87,6 +87,20 @@ remove_path() {
   return 0
 }
 
+adhoc_sign() {
+  local target_path="$1"
+  local label="$2"
+
+  if ! command -v codesign >/dev/null 2>&1; then
+    echo "codesign is required to sign ${label}" >&2
+    return 1
+  fi
+
+  echo "Adhoc signing ${label}..."
+  codesign --force --deep --sign - --timestamp=none "${target_path}"
+  codesign --verify --deep --strict --verbose=2 "${target_path}"
+}
+
 mkdir -p "${DIST_DIR}"
 
 echo "Cleaning ${DIST_DIR}..."
@@ -151,6 +165,8 @@ if [[ -n "${ICON_FILE}" ]]; then
   /usr/libexec/PlistBuddy -c "Add :CFBundleIconFile string ${ICON_FILE}" "${CONTENTS_DIR}/Info.plist"
 fi
 
+adhoc_sign "${APP_BUNDLE}" "app bundle"
+
 echo "Creating drag-and-drop DMG..."
 remove_path "${DMG_PATH}" "disk image" || exit 1
 DMG_STAGING_DIR="${STAGING_ROOT}/dmg"
@@ -158,6 +174,7 @@ mkdir -p "${DMG_STAGING_DIR}"
 ditto "${APP_BUNDLE}" "${DMG_STAGING_DIR}/${APP_NAME}.app"
 ln -s /Applications "${DMG_STAGING_DIR}/Applications"
 hdiutil create -volname "${APP_NAME}" -srcfolder "${DMG_STAGING_DIR}" -ov -format UDZO "${DMG_PATH}" >/dev/null
+adhoc_sign "${DMG_PATH}" "disk image"
 
 echo "Publishing app bundle to dist..."
 APP_BUNDLE_PUBLISHED="false"
