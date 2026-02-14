@@ -2,18 +2,18 @@ import XCTest
 @testable import Rewind
 
 final class CaptureResolutionTests: XCTestCase {
-  func testAlignedSizeRoundsDownToMultipleOf16() {
+  func testAlignedSizeRoundsDownToEvenDimensions() {
     let resolution = CaptureResolution(id: "test", label: "Test", width: 1919, height: 1079, isNative: false)
     let aligned = resolution.alignedSize
-    XCTAssertEqual(Int(aligned.width), 1904)
-    XCTAssertEqual(Int(aligned.height), 1072)
+    XCTAssertEqual(Int(aligned.width), 1918)
+    XCTAssertEqual(Int(aligned.height), 1078)
   }
 
-  func testAlignedSizeMinimum16() {
+  func testAlignedSizeMinimum2() {
     let resolution = CaptureResolution(id: "tiny", label: "Tiny", width: 1, height: 2, isNative: false)
     let aligned = resolution.alignedSize
-    XCTAssertEqual(Int(aligned.width), 16)
-    XCTAssertEqual(Int(aligned.height), 16)
+    XCTAssertEqual(Int(aligned.width), 2)
+    XCTAssertEqual(Int(aligned.height), 2)
   }
 
   func testNativeFactorySetsFields() {

@@ -4,48 +4,61 @@ struct QualityPreset: Hashable, Identifiable, Sendable {
   let id: String
   let label: String
   let description: String
-  /// quality value used by HEVC presets 
-  /// the lossless and near_lossless presets use dedicated codec paths and do not rely on these values
-  let quality: Float
+  /// bpp/f used to compute bitrate from output resolution and fps
+  let bitsPerPixel: Double
+  let minBitrateMbps: Double
+  let maxBitrateMbps: Double
 
   static let presets: [QualityPreset] = [
     QualityPreset(
-      id: "lossless",
-      label: "Lossless",
-      description: "Perfect quality, largest files",
-      quality: 1.0
+      id: "competitive",
+      label: "Competitive",
+      description: "Sharp enough for gameplay, smallest files",
+      bitsPerPixel: 0.045,
+      minBitrateMbps: 4,
+      maxBitrateMbps: 40
     ),
     QualityPreset(
-      id: "near_lossless",
-      label: "Near Lossless",
-      description: "Extremely high quality, much larger files",
-      quality: 0.95
-    ),
-    QualityPreset(
-      id: "ultra",
-      label: "Ultra",
-      description: "Ultra quality, larger files",
-      quality: 0.90
-    ),
-    QualityPreset(
-      id: "high",
-      label: "High",
-      description: "Very high quality for screen content",
-      quality: 0.78
+      id: "performance",
+      label: "Performance",
+      description: "More detail while staying storage-friendly",
+      bitsPerPixel: 0.055,
+      minBitrateMbps: 6,
+      maxBitrateMbps: 50
     ),
     QualityPreset(
       id: "balanced",
       label: "Balanced",
-      description: "Good quality, really good file size",
-      quality: 0.62
+      description: "Best mix of clarity and size",
+      bitsPerPixel: 0.065,
+      minBitrateMbps: 8,
+      maxBitrateMbps: 60
     ),
     QualityPreset(
-      id: "efficient",
-      label: "Efficient",
-      description: "Some would say a bit too efficient",
-      quality: 0.35
+      id: "high",
+      label: "High",
+      description: "High clarity for fast gameplay",
+      bitsPerPixel: 0.078,
+      minBitrateMbps: 10,
+      maxBitrateMbps: 75
+    ),
+    QualityPreset(
+      id: "ultra",
+      label: "Ultra",
+      description: "Near-max quality with larger files",
+      bitsPerPixel: 0.092,
+      minBitrateMbps: 14,
+      maxBitrateMbps: 90
+    ),
+    QualityPreset(
+      id: "max",
+      label: "Max",
+      description: "Maximum practical quality",
+      bitsPerPixel: 0.110,
+      minBitrateMbps: 18,
+      maxBitrateMbps: 110
     )
   ]
 
-  static let `default` = presets.first { $0.id == "high" }!
+  static let `default` = presets.first { $0.id == "balanced" }!
 }

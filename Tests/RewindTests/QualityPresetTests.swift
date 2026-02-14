@@ -2,8 +2,8 @@ import XCTest
 @testable import Rewind
 
 final class QualityPresetTests: XCTestCase {
-  func testDefaultIsHigh() {
-    XCTAssertEqual(QualityPreset.default.id, "high")
+  func testDefaultIsBalanced() {
+    XCTAssertEqual(QualityPreset.default.id, "balanced")
   }
 
   func testPresetsHaveUniqueIds() {
@@ -11,10 +11,18 @@ final class QualityPresetTests: XCTestCase {
     XCTAssertEqual(Set(ids).count, ids.count)
   }
 
-  func testPresetsStayWithinExpectedRange() {
+  func testPresetLadderHasSixExpectedTiers() {
+    XCTAssertEqual(
+      QualityPreset.presets.map(\.id),
+      ["competitive", "performance", "balanced", "high", "ultra", "max"]
+    )
+  }
+
+  func testPresetsHaveValidBitrateConfig() {
     for preset in QualityPreset.presets {
-      XCTAssertGreaterThanOrEqual(preset.quality, 0.0)
-      XCTAssertLessThanOrEqual(preset.quality, 1.0)
+      XCTAssertGreaterThan(preset.bitsPerPixel, 0)
+      XCTAssertGreaterThan(preset.minBitrateMbps, 0)
+      XCTAssertGreaterThanOrEqual(preset.maxBitrateMbps, preset.minBitrateMbps)
       XCTAssertFalse(preset.label.isEmpty)
     }
   }

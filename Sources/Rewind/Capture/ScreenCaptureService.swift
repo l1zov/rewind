@@ -103,17 +103,14 @@ final class ScreenCaptureService: NSObject, SCStreamOutput, SCStreamDelegate, @u
     }
 
     captureResolution = targetResolution
-    let alignedSize = targetResolution.alignedSize
+    let outputSize = targetResolution.alignedSize
 
     let config = SCStreamConfiguration()
-    config.width = Int(alignedSize.width)
-    config.height = Int(alignedSize.height)
-    // only disable scaling when dimensions match native pixels exactly
-    config.scalesToFit = !(config.width == nativeWidth && config.height == nativeHeight)
+    config.width = nativeWidth
+    config.height = nativeHeight
+    config.scalesToFit = false
     config.queueDepth = 15
-    // lossless and near-lossless use BGRA capture to preserve full chroma; other presets use 420f for efficiency
     config.pixelFormat = capturePixelFormat(for: quality)
-    // extended sRGB preserves colors outside standard sRGB gamut (common on them expensive displays)
     config.colorSpaceName = CGColorSpace.extendedSRGB
     config.capturesAudio = true
     // user controlled
@@ -121,11 +118,22 @@ final class ScreenCaptureService: NSObject, SCStreamOutput, SCStreamDelegate, @u
     config.minimumFrameInterval = CMTime(value: 1, timescale: CMTimeScale(clampedFrameRate))
     config.showsCursor = true
 
-    AppLog.debug(.capture, "ScreenCaptureService: config:", config.width, "x", config.height,
-                 targetResolution.isNative ? "(native)" : "(scaled)",
-                 "scalesToFit:", config.scalesToFit)
+    AppLog.debug(
+      .capture,
+      "ScreenCaptureService: capture config:",
+      config.width,
+      "x",
+      config.height,
+      "output target:",
+      Int(outputSize.width),
+      "x",
+      Int(outputSize.height),
+      targetResolution.isNative ? "(native)" : "(scaled)",
+      "scalesToFit:",
+      config.scalesToFit
+    )
 
-    displaySize = alignedSize
+    displaySize = outputSize
     loggedFirstFrame = false
 
     let stream = SCStream(filter: filter, configuration: config, delegate: self)
@@ -136,12 +144,8 @@ final class ScreenCaptureService: NSObject, SCStreamOutput, SCStreamDelegate, @u
   }
 
   private func capturePixelFormat(for quality: QualityPreset) -> OSType {
-    switch quality.id {
-    case "lossless", "near_lossless":
-      return kCVPixelFormatType_32BGRA
-    default:
-      return kCVPixelFormatType_420YpCbCr8BiPlanarFullRange
-    }
+    _ = quality
+    return kCVPixelFormatType_32BGRA
   }
 
   func stopCapture() async {

@@ -13,14 +13,14 @@ struct CaptureResolution: Hashable, Identifiable, Sendable {
     CGSize(width: width, height: height)
   }
 
-  /// keeps native capture exact; scaled modes use 16-multiple dimensions for encoder compatibility
+  /// keeps native capture exact
   var alignedSize: CGSize {
     if isNative {
       return CGSize(width: width, height: height)
     }
 
-    let alignedWidth = max(16, width - (width % 16))
-    let alignedHeight = max(16, height - (height % 16))
+    let alignedWidth = max(2, width - (width % 2))
+    let alignedHeight = max(2, height - (height % 2))
     return CGSize(width: alignedWidth, height: alignedHeight)
   }
 
@@ -68,8 +68,8 @@ enum CaptureResolutionProvider {
     for height in targetHeights {
       let width = Int((CGFloat(height) * aspectRatio).rounded())
       if width >= nativeWidth || height >= nativeHeight { continue }
-      let alignedWidth = max(16, width - (width % 16))
-      let alignedHeight = max(16, height - (height % 16))
+      let alignedWidth = max(2, width - (width % 2))
+      let alignedHeight = max(2, height - (height % 2))
 
       let label: String
       switch height {
