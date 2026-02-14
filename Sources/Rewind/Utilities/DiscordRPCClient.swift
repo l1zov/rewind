@@ -24,7 +24,7 @@ actor DiscordRPCClient {
   private enum Constants {
     static let protocolVersion = 1
     static let connectTimeoutMilliseconds: Int32 = 1_500
-    static let rewindWebsiteURL = "https://github.com/lzov/rewind"
+    static let rewindWebsiteURL = "https://github.com/l1zov/rewind"
   }
 
   private let clientID: String?
