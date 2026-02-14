@@ -24,6 +24,7 @@ actor DiscordRPCClient {
   private enum Constants {
     static let protocolVersion = 1
     static let connectTimeoutMilliseconds: Int32 = 1_500
+    static let rewindWebsiteURL = "https://github.com/lzov/rewind"
   }
 
   private let clientID: String?
@@ -60,7 +61,13 @@ actor DiscordRPCClient {
       "args": [
         "pid": Int(getpid()),
         "activity": [
-          "details": state.details
+          "details": state.details,
+          "buttons": [
+            [
+              "label": "Get Rewind",
+              "url": Constants.rewindWebsiteURL
+            ]
+          ]
         ]
       ]
     ]
