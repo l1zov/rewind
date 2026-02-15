@@ -124,43 +124,51 @@ enum AppSettingsStorage {
   static func load() -> AppSettings {
     if let data = UserDefaults.standard.data(forKey: key),
        let decoded = try? JSONDecoder().decode(AppSettings.self, from: data) {
-      return normalize(decoded)
+      guard isValid(decoded) else {
+        UserDefaults.standard.removeObject(forKey: key)
+        return .default
+      }
+      return decoded
+    }
+
+    if UserDefaults.standard.object(forKey: key) != nil {
+      UserDefaults.standard.removeObject(forKey: key)
     }
 
     return .default
   }
 
   static func save(_ settings: AppSettings) {
-    let normalized = normalize(settings)
-    guard let data = try? JSONEncoder().encode(normalized) else { return }
+    guard isValid(settings),
+          let data = try? JSONEncoder().encode(settings) else {
+      UserDefaults.standard.removeObject(forKey: key)
+      return
+    }
     UserDefaults.standard.set(data, forKey: key)
   }
 
-  private static func normalize(_ settings: AppSettings) -> AppSettings {
-    var normalized = settings
-    normalized.replayDuration = min(
-      max(normalized.replayDuration, AppSettings.replayDurationRange.lowerBound),
-      AppSettings.replayDurationRange.upperBound
-    )
-    if QualityPreset.presets.contains(where: { $0.id == normalized.qualityID }) == false {
-      normalized.qualityID = QualityPreset.default.id
+  private static func isValid(_ settings: AppSettings) -> Bool {
+    guard AppSettings.replayDurationRange.contains(settings.replayDuration) else {
+      return false
     }
-    if CaptureFrameRate.options.contains(where: { $0.framesPerSecond == normalized.frameRate }) == false {
-      normalized.frameRate = CaptureFrameRate.default.framesPerSecond
+    guard QualityPreset.presets.contains(where: { $0.id == settings.qualityID }) else {
+      return false
     }
-    if CaptureContainer.options.contains(where: { $0.id == normalized.containerID }) == false {
-      normalized.containerID = CaptureContainer.default.id
+    guard CaptureFrameRate.options.contains(where: { $0.framesPerSecond == settings.frameRate }) else {
+      return false
     }
-    if CaptureAudioCodec.options.contains(where: { $0.id == normalized.audioCodecID }) == false {
-      normalized.audioCodecID = CaptureAudioCodec.default.id
+    guard CaptureContainer.options.contains(where: { $0.id == settings.containerID }) else {
+      return false
     }
-    normalized.saveFeedbackVolume = min(
-      max(normalized.saveFeedbackVolume, AppSettings.saveFeedbackVolumeRange.lowerBound),
-      AppSettings.saveFeedbackVolumeRange.upperBound
-    )
-    if SaveFeedbackSound.options.contains(where: { $0.id == normalized.saveFeedbackSoundID }) == false {
-      normalized.saveFeedbackSoundID = SaveFeedbackSound.default.id
+    guard CaptureAudioCodec.options.contains(where: { $0.id == settings.audioCodecID }) else {
+      return false
     }
-    return normalized
+    guard AppSettings.saveFeedbackVolumeRange.contains(settings.saveFeedbackVolume) else {
+      return false
+    }
+    guard SaveFeedbackSound.options.contains(where: { $0.id == settings.saveFeedbackSoundID }) else {
+      return false
+    }
+    return true
   }
 }

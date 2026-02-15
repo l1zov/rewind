@@ -35,7 +35,7 @@ final class AppSettingsStorageTests: XCTestCase {
     let expected = AppSettings(
       replayDuration: 45,
       resolutionID: "1920x1080",
-      qualityID: "ultra",
+      qualityID: "very-high",
       frameRate: 30,
       containerID: "mp4",
       audioCodecID: CaptureAudioCodec.aac.id,
@@ -64,7 +64,7 @@ final class AppSettingsStorageTests: XCTestCase {
     XCTAssertEqual(loaded.discordRPCEnabled, expected.discordRPCEnabled)
   }
 
-  func testLoadNormalizesInvalidStoredValues() throws {
+  func testLoadClearsStoredValuesAndReturnsDefaultWhenStoredSettingsAreInvalid() throws {
     let invalid = AppSettings(
       replayDuration: 500,
       resolutionID: "jldsjkjdhsk",
@@ -84,18 +84,19 @@ final class AppSettingsStorageTests: XCTestCase {
 
     let loaded = AppSettingsStorage.load()
 
-    XCTAssertEqual(loaded.replayDuration, AppSettings.replayDurationRange.upperBound)
-    XCTAssertEqual(loaded.resolutionID, invalid.resolutionID)
-    XCTAssertEqual(loaded.qualityID, QualityPreset.default.id)
-    XCTAssertEqual(loaded.frameRate, CaptureFrameRate.default.framesPerSecond)
-    XCTAssertEqual(loaded.containerID, CaptureContainer.default.id)
-    XCTAssertEqual(loaded.audioCodecID, CaptureAudioCodec.default.id)
-    XCTAssertEqual(loaded.hotkey, invalid.hotkey)
-    XCTAssertEqual(loaded.startRecordingHotkey, invalid.startRecordingHotkey)
-    XCTAssertEqual(loaded.saveFeedbackEnabled, invalid.saveFeedbackEnabled)
-    XCTAssertEqual(loaded.saveFeedbackVolume, AppSettings.saveFeedbackVolumeRange.upperBound)
-    XCTAssertEqual(loaded.saveFeedbackSoundID, SaveFeedbackSound.default.id)
-    XCTAssertEqual(loaded.discordRPCEnabled, invalid.discordRPCEnabled)
+    XCTAssertNil(UserDefaults.standard.object(forKey: storageKey))
+    XCTAssertEqual(loaded.replayDuration, AppSettings.default.replayDuration)
+    XCTAssertEqual(loaded.resolutionID, AppSettings.default.resolutionID)
+    XCTAssertEqual(loaded.qualityID, AppSettings.default.qualityID)
+    XCTAssertEqual(loaded.frameRate, AppSettings.default.frameRate)
+    XCTAssertEqual(loaded.containerID, AppSettings.default.containerID)
+    XCTAssertEqual(loaded.audioCodecID, AppSettings.default.audioCodecID)
+    XCTAssertEqual(loaded.hotkey, AppSettings.default.hotkey)
+    XCTAssertEqual(loaded.startRecordingHotkey, AppSettings.default.startRecordingHotkey)
+    XCTAssertEqual(loaded.saveFeedbackEnabled, AppSettings.default.saveFeedbackEnabled)
+    XCTAssertEqual(loaded.saveFeedbackVolume, AppSettings.default.saveFeedbackVolume)
+    XCTAssertEqual(loaded.saveFeedbackSoundID, AppSettings.default.saveFeedbackSoundID)
+    XCTAssertEqual(loaded.discordRPCEnabled, AppSettings.default.discordRPCEnabled)
   }
 
   func testLoadFallsBackToDefaultWhenStoredBlobIsInvalid() {
@@ -103,6 +104,7 @@ final class AppSettingsStorageTests: XCTestCase {
 
     let loaded = AppSettingsStorage.load()
 
+    XCTAssertNil(UserDefaults.standard.object(forKey: storageKey))
     XCTAssertEqual(loaded.replayDuration, AppSettings.default.replayDuration)
     XCTAssertEqual(loaded.qualityID, AppSettings.default.qualityID)
     XCTAssertEqual(loaded.frameRate, AppSettings.default.frameRate)
@@ -114,5 +116,26 @@ final class AppSettingsStorageTests: XCTestCase {
     XCTAssertEqual(loaded.saveFeedbackVolume, AppSettings.default.saveFeedbackVolume)
     XCTAssertEqual(loaded.saveFeedbackSoundID, AppSettings.default.saveFeedbackSoundID)
     XCTAssertEqual(loaded.discordRPCEnabled, AppSettings.default.discordRPCEnabled)
+  }
+
+  func testSaveClearsStorageWhenSettingsAreInvalid() {
+    let invalid = AppSettings(
+      replayDuration: AppSettings.default.replayDuration,
+      resolutionID: AppSettings.default.resolutionID,
+      qualityID: "old-balanced-id",
+      frameRate: AppSettings.default.frameRate,
+      containerID: AppSettings.default.containerID,
+      audioCodecID: AppSettings.default.audioCodecID,
+      hotkey: AppSettings.default.hotkey,
+      startRecordingHotkey: AppSettings.default.startRecordingHotkey,
+      saveFeedbackEnabled: AppSettings.default.saveFeedbackEnabled,
+      saveFeedbackVolume: AppSettings.default.saveFeedbackVolume,
+      saveFeedbackSoundID: AppSettings.default.saveFeedbackSoundID,
+      discordRPCEnabled: AppSettings.default.discordRPCEnabled
+    )
+
+    AppSettingsStorage.save(invalid)
+
+    XCTAssertNil(UserDefaults.standard.object(forKey: storageKey))
   }
 }

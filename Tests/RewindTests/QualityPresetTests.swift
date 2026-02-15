@@ -2,8 +2,8 @@ import XCTest
 @testable import Rewind
 
 final class QualityPresetTests: XCTestCase {
-  func testDefaultIsBalanced() {
-    XCTAssertEqual(QualityPreset.default.id, "balanced")
+  func testDefaultIsMedium() {
+    XCTAssertEqual(QualityPreset.default.id, "medium")
   }
 
   func testPresetsHaveUniqueIds() {
@@ -14,7 +14,7 @@ final class QualityPresetTests: XCTestCase {
   func testPresetLadderHasSixExpectedTiers() {
     XCTAssertEqual(
       QualityPreset.presets.map(\.id),
-      ["competitive", "performance", "balanced", "high", "ultra", "max"]
+      ["very-low", "low", "medium", "high", "very-high", "maximum"]
     )
   }
 

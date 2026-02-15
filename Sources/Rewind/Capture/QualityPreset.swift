@@ -11,25 +11,25 @@ struct QualityPreset: Hashable, Identifiable, Sendable {
 
   static let presets: [QualityPreset] = [
     QualityPreset(
-      id: "competitive",
-      label: "Competitive",
-      description: "Sharp enough for gameplay, smallest files",
+      id: "very-low",
+      label: "Very Low",
+      description: "Smallest files, softest detail",
       bitsPerPixel: 0.045,
       minBitrateMbps: 4,
       maxBitrateMbps: 40
     ),
     QualityPreset(
-      id: "performance",
-      label: "Performance",
-      description: "More detail while staying storage-friendly",
+      id: "low",
+      label: "Low",
+      description: "Smaller files with basic detail",
       bitsPerPixel: 0.055,
       minBitrateMbps: 6,
       maxBitrateMbps: 50
     ),
     QualityPreset(
-      id: "balanced",
-      label: "Balanced",
-      description: "Best mix of clarity and size",
+      id: "medium",
+      label: "Medium",
+      description: "Balanced quality and file size",
       bitsPerPixel: 0.065,
       minBitrateMbps: 8,
       maxBitrateMbps: 60
@@ -37,28 +37,28 @@ struct QualityPreset: Hashable, Identifiable, Sendable {
     QualityPreset(
       id: "high",
       label: "High",
-      description: "High clarity for fast gameplay",
+      description: "Sharper detail with larger files",
       bitsPerPixel: 0.078,
       minBitrateMbps: 10,
       maxBitrateMbps: 75
     ),
     QualityPreset(
-      id: "ultra",
-      label: "Ultra",
-      description: "Near-max quality with larger files",
+      id: "very-high",
+      label: "Very High",
+      description: "High clarity for fast motion",
       bitsPerPixel: 0.092,
       minBitrateMbps: 14,
       maxBitrateMbps: 90
     ),
     QualityPreset(
-      id: "max",
-      label: "Max",
-      description: "Maximum practical quality",
+      id: "maximum",
+      label: "Maximum",
+      description: "Best quality, largest files",
       bitsPerPixel: 0.110,
       minBitrateMbps: 18,
       maxBitrateMbps: 110
     )
   ]
 
-  static let `default` = presets.first { $0.id == "balanced" }!
+  static let `default` = presets.first { $0.id == "medium" }!
 }
