@@ -59,6 +59,13 @@ final class AppState: ObservableObject {
       persistSettings()
     }
   }
+  @Published var selectedAudioCodec: CaptureAudioCodec = .default {
+    didSet {
+      guard !isRestoringSettings else { return }
+      guard selectedAudioCodec != oldValue else { return }
+      persistSettings()
+    }
+  }
   @Published var hotkey: Hotkey = .default {
     didSet {
       guard !isRestoringSettings else { return }
@@ -142,6 +149,7 @@ final class AppState: ObservableObject {
     selectedQuality = settings.qualityPreset
     selectedFrameRate = settings.frameRateOption
     selectedContainer = settings.container
+    selectedAudioCodec = settings.audioCodec
     preferredResolutionID = settings.resolutionID
     hotkey = settings.hotkey
     startRecordingHotkey = settings.startRecordingHotkey
@@ -245,7 +253,8 @@ final class AppState: ObservableObject {
       try await captureManager.start(
         resolution: selectedResolution,
         quality: selectedQuality,
-        frameRate: selectedFrameRate.framesPerSecond
+        frameRate: selectedFrameRate.framesPerSecond,
+        audioCodec: selectedAudioCodec
       )
       isCapturing = true
       updateDiscordActivity(.recording)
@@ -364,6 +373,7 @@ final class AppState: ObservableObject {
         qualityID: selectedQuality.id,
         frameRate: selectedFrameRate.framesPerSecond,
         containerID: selectedContainer.id,
+        audioCodecID: selectedAudioCodec.id,
         hotkey: hotkey,
         startRecordingHotkey: startRecordingHotkey,
         saveFeedbackEnabled: saveFeedbackEnabled,

@@ -109,6 +109,20 @@ struct SettingsView: View {
             }
           }
 
+          settingsRow("Audio codec") {
+            HStack(spacing: 0) {
+              Spacer(minLength: 0)
+              Picker("Audio codec", selection: $appState.selectedAudioCodec) {
+                ForEach(CaptureAudioCodec.options) { option in
+                  Text(option.label).tag(option)
+                }
+              }
+              .frame(width: 180)
+              .labelsHidden()
+              .pickerStyle(.menu)
+            }
+          }
+
           Divider()
 
           sectionHeader("Hotkeys")

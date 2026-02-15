@@ -22,6 +22,7 @@ final class AppSettingsStorageTests: XCTestCase {
     XCTAssertEqual(settings.qualityID, AppSettings.default.qualityID)
     XCTAssertEqual(settings.frameRate, AppSettings.default.frameRate)
     XCTAssertEqual(settings.containerID, AppSettings.default.containerID)
+    XCTAssertEqual(settings.audioCodecID, AppSettings.default.audioCodecID)
     XCTAssertEqual(settings.hotkey, AppSettings.default.hotkey)
     XCTAssertEqual(settings.startRecordingHotkey, AppSettings.default.startRecordingHotkey)
     XCTAssertEqual(settings.saveFeedbackEnabled, AppSettings.default.saveFeedbackEnabled)
@@ -37,6 +38,7 @@ final class AppSettingsStorageTests: XCTestCase {
       qualityID: "ultra",
       frameRate: 30,
       containerID: "mp4",
+      audioCodecID: CaptureAudioCodec.aac.id,
       hotkey: Hotkey(keyCode: 0, modifiers: Hotkey.default.modifiers),
       startRecordingHotkey: Hotkey.startRecordingDefault,
       saveFeedbackEnabled: false,
@@ -53,6 +55,7 @@ final class AppSettingsStorageTests: XCTestCase {
     XCTAssertEqual(loaded.qualityID, expected.qualityID)
     XCTAssertEqual(loaded.frameRate, expected.frameRate)
     XCTAssertEqual(loaded.containerID, expected.containerID)
+    XCTAssertEqual(loaded.audioCodecID, expected.audioCodecID)
     XCTAssertEqual(loaded.hotkey, expected.hotkey)
     XCTAssertEqual(loaded.startRecordingHotkey, expected.startRecordingHotkey)
     XCTAssertEqual(loaded.saveFeedbackEnabled, expected.saveFeedbackEnabled)
@@ -68,6 +71,7 @@ final class AppSettingsStorageTests: XCTestCase {
       qualityID: "dsjdjhhdha",
       frameRate: 999,
       containerID: "hhkkhhklllllll",
+      audioCodecID: "nope",
       hotkey: Hotkey(keyCode: 999, modifiers: 0),
       startRecordingHotkey: Hotkey(keyCode: 998, modifiers: 0),
       saveFeedbackEnabled: true,
@@ -85,6 +89,7 @@ final class AppSettingsStorageTests: XCTestCase {
     XCTAssertEqual(loaded.qualityID, QualityPreset.default.id)
     XCTAssertEqual(loaded.frameRate, CaptureFrameRate.default.framesPerSecond)
     XCTAssertEqual(loaded.containerID, CaptureContainer.default.id)
+    XCTAssertEqual(loaded.audioCodecID, CaptureAudioCodec.default.id)
     XCTAssertEqual(loaded.hotkey, invalid.hotkey)
     XCTAssertEqual(loaded.startRecordingHotkey, invalid.startRecordingHotkey)
     XCTAssertEqual(loaded.saveFeedbackEnabled, invalid.saveFeedbackEnabled)
@@ -102,6 +107,7 @@ final class AppSettingsStorageTests: XCTestCase {
     XCTAssertEqual(loaded.qualityID, AppSettings.default.qualityID)
     XCTAssertEqual(loaded.frameRate, AppSettings.default.frameRate)
     XCTAssertEqual(loaded.containerID, AppSettings.default.containerID)
+    XCTAssertEqual(loaded.audioCodecID, AppSettings.default.audioCodecID)
     XCTAssertEqual(loaded.hotkey, AppSettings.default.hotkey)
     XCTAssertEqual(loaded.startRecordingHotkey, AppSettings.default.startRecordingHotkey)
     XCTAssertEqual(loaded.saveFeedbackEnabled, AppSettings.default.saveFeedbackEnabled)

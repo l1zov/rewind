@@ -12,6 +12,7 @@ struct AppSettings: Codable, Sendable {
   var qualityID: String
   var frameRate: Int
   var containerID: String
+  var audioCodecID: String
   var hotkey: Hotkey
   var startRecordingHotkey: Hotkey
   var saveFeedbackEnabled: Bool
@@ -25,6 +26,7 @@ struct AppSettings: Codable, Sendable {
     qualityID: QualityPreset.default.id,
     frameRate: CaptureFrameRate.default.framesPerSecond,
     containerID: CaptureContainer.default.id,
+    audioCodecID: CaptureAudioCodec.default.id,
     hotkey: .default,
     startRecordingHotkey: .startRecordingDefault,
     saveFeedbackEnabled: true,
@@ -39,6 +41,7 @@ struct AppSettings: Codable, Sendable {
     case qualityID
     case frameRate
     case containerID
+    case audioCodecID
     case hotkey
     case startRecordingHotkey
     case saveFeedbackEnabled
@@ -53,6 +56,7 @@ struct AppSettings: Codable, Sendable {
     qualityID: String,
     frameRate: Int,
     containerID: String,
+    audioCodecID: String,
     hotkey: Hotkey,
     startRecordingHotkey: Hotkey,
     saveFeedbackEnabled: Bool,
@@ -65,6 +69,7 @@ struct AppSettings: Codable, Sendable {
     self.qualityID = qualityID
     self.frameRate = frameRate
     self.containerID = containerID
+    self.audioCodecID = audioCodecID
     self.hotkey = hotkey
     self.startRecordingHotkey = startRecordingHotkey
     self.saveFeedbackEnabled = saveFeedbackEnabled
@@ -80,6 +85,7 @@ struct AppSettings: Codable, Sendable {
     qualityID = try container.decode(String.self, forKey: .qualityID)
     frameRate = try container.decode(Int.self, forKey: .frameRate)
     containerID = try container.decodeIfPresent(String.self, forKey: .containerID) ?? CaptureContainer.default.id
+    audioCodecID = try container.decodeIfPresent(String.self, forKey: .audioCodecID) ?? CaptureAudioCodec.default.id
     hotkey = try container.decode(Hotkey.self, forKey: .hotkey)
     startRecordingHotkey = try container.decodeIfPresent(Hotkey.self, forKey: .startRecordingHotkey)
       ?? .startRecordingDefault
@@ -101,6 +107,10 @@ struct AppSettings: Codable, Sendable {
 
   var container: CaptureContainer {
     CaptureContainer.options.first(where: { $0.id == containerID }) ?? .default
+  }
+
+  var audioCodec: CaptureAudioCodec {
+    CaptureAudioCodec.options.first(where: { $0.id == audioCodecID }) ?? .default
   }
 
   var saveFeedbackSound: SaveFeedbackSound {
@@ -140,6 +150,9 @@ enum AppSettingsStorage {
     }
     if CaptureContainer.options.contains(where: { $0.id == normalized.containerID }) == false {
       normalized.containerID = CaptureContainer.default.id
+    }
+    if CaptureAudioCodec.options.contains(where: { $0.id == normalized.audioCodecID }) == false {
+      normalized.audioCodecID = CaptureAudioCodec.default.id
     }
     normalized.saveFeedbackVolume = min(
       max(normalized.saveFeedbackVolume, AppSettings.saveFeedbackVolumeRange.lowerBound),

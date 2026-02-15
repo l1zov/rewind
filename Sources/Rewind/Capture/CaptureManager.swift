@@ -26,6 +26,7 @@ actor CaptureManager {
   private var currentResolution: CaptureResolution?
   private var currentQuality: QualityPreset = .default
   private var currentFrameRate: Int = CaptureFrameRate.default.framesPerSecond
+  private var currentAudioCodec: CaptureAudioCodec = .default
   private var onCaptureInterrupted: (@MainActor (Error) -> Void)?
 
   /// thread-safe reference to current writer for use in callbacks
@@ -65,12 +66,14 @@ actor CaptureManager {
   func start(
     resolution: CaptureResolution? = nil,
     quality: QualityPreset = .default,
-    frameRate: Int = CaptureFrameRate.default.framesPerSecond
+    frameRate: Int = CaptureFrameRate.default.framesPerSecond,
+    audioCodec: CaptureAudioCodec = .default
   ) async throws {
     guard !isRunning else { return }
     currentResolution = resolution
     currentQuality = quality
     currentFrameRate = frameRate
+    currentAudioCodec = audioCodec
     do {
       try await screenCapture.startCapture(
         resolution: resolution,
@@ -216,16 +219,32 @@ actor CaptureManager {
   }
 
   private var captureAudioSettings: [String: Any] {
-    [
-      // use PCM for segments
-      AVFormatIDKey: kAudioFormatLinearPCM,
-      AVSampleRateKey: 48_000,
-      AVNumberOfChannelsKey: 2,
-      AVLinearPCMBitDepthKey: 16,
-      AVLinearPCMIsFloatKey: false,
-      AVLinearPCMIsBigEndianKey: false,
-      "AVLinearPCMIsNonInterleaved": false
-    ]
+    switch currentAudioCodec.id {
+    case CaptureAudioCodec.linearPCM.id:
+      return [
+        AVFormatIDKey: kAudioFormatLinearPCM,
+        AVSampleRateKey: 48_000,
+        AVNumberOfChannelsKey: 2,
+        AVLinearPCMBitDepthKey: 16,
+        AVLinearPCMIsFloatKey: false,
+        AVLinearPCMIsBigEndianKey: false,
+        "AVLinearPCMIsNonInterleaved": false
+      ]
+    case CaptureAudioCodec.aac.id:
+      return [
+        AVFormatIDKey: kAudioFormatMPEG4AAC,
+        AVSampleRateKey: 48_000,
+        AVNumberOfChannelsKey: 2,
+        AVEncoderBitRateKey: 192_000
+      ]
+    default:
+      return [
+        AVFormatIDKey: kAudioFormatAppleLossless,
+        AVSampleRateKey: 48_000,
+        AVNumberOfChannelsKey: 2,
+        AVEncoderBitDepthHintKey: 16
+      ]
+    }
   }
 
   private func exportFromSegments(
