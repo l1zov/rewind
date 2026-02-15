@@ -1,5 +1,4 @@
 @preconcurrency import AVFoundation
-import Accelerate
 import CoreGraphics
 
 final class ReplayWriter: @unchecked Sendable {
@@ -68,8 +67,6 @@ final class ReplayWriter: @unchecked Sendable {
   private var audioFormatDescription: CMAudioFormatDescription?
   private var audioASBD: AudioStreamBasicDescription?
   private var videoBackpressureDrops = 0
-  private var loggedFirstScaledFrame = false
-  private var scaleFailureDrops = 0
   private var reconfigureCount = 0
 
   /// queue to buffer audio samples before video session starts
@@ -222,8 +219,6 @@ final class ReplayWriter: @unchecked Sendable {
 
   private func sourcePixelFormat(for quality: QualityPreset) -> OSType {
     _ = quality
-    // keep writer input buffers in BGRA so we can apply high-quality software scaling
-    // before the frame reaches the encoder.
     return kCVPixelFormatType_32BGRA
   }
 
@@ -275,8 +270,6 @@ final class ReplayWriter: @unchecked Sendable {
     audioFormatDescription = nil
     audioASBD = nil
     videoBackpressureDrops = 0
-    loggedFirstScaledFrame = false
-    scaleFailureDrops = 0
     pendingAudioSamples.removeAll()
     pendingVideoSamples.removeAll()
     pendingVideoDrops = 0
@@ -330,6 +323,10 @@ final class ReplayWriter: @unchecked Sendable {
     let pixelBufferForMode = CMSampleBufferGetImageBuffer(sampleBuffer)
     let desiredMode: VideoMode = (pixelBufferForMode != nil) ? .pixelBufferEncode : .passthrough
     if reconfigureForVideoModeIfNeeded(desiredMode: desiredMode, pixelBuffer: pixelBufferForMode) {
+      return
+    }
+    if let pixelBuffer = pixelBufferForMode,
+       reconfigureForBufferSizeIfNeeded(pixelBuffer: pixelBuffer) {
       return
     }
 
@@ -407,6 +404,37 @@ final class ReplayWriter: @unchecked Sendable {
     return true
   }
 
+  private func reconfigureForBufferSizeIfNeeded(pixelBuffer: CVPixelBuffer) -> Bool {
+    guard let writer = writer,
+          writer.status == .unknown,
+          let configuredSize = configuredVideoSize else { return false }
+
+    let width = CVPixelBufferGetWidth(pixelBuffer)
+    let height = CVPixelBufferGetHeight(pixelBuffer)
+    let bufferSize = CGSize(width: width, height: height)
+    guard configuredSize != bufferSize else { return false }
+
+    reconfigureCount += 1
+    Log.info("⚠️ ReplayWriter.appendVideo reconfigure #\(reconfigureCount) for buffer size:", width, "x", height)
+    guard let outputURL = outputURL else { return true }
+
+    do {
+      try configureOnQueue(
+        outputURL: outputURL,
+        videoSize: bufferSize,
+        includeAudio: includeAudio,
+        audioSettings: configuredAudioSettings,
+        videoMode: configuredVideoMode,
+        quality: configuredQuality,
+        frameRate: configuredFrameRate
+      )
+    } catch {
+      logWriterError("ReplayWriter.appendVideo reconfigure failed", error)
+      acceptsMediaData = false
+    }
+    return true
+  }
+
   private func appendVideoSample(_ sampleBuffer: CMSampleBuffer, writer: AVAssetWriter, videoInput: AVAssetWriterInput) {
     let pts = CMSampleBufferGetPresentationTimeStamp(sampleBuffer)
     if !loggedFirstVideoBuffer, let pixelBuffer = CMSampleBufferGetImageBuffer(sampleBuffer) {
@@ -415,14 +443,12 @@ final class ReplayWriter: @unchecked Sendable {
       let format = CVPixelBufferGetPixelFormatType(pixelBuffer)
       Log.info("ReplayWriter.appendVideo first buffer:", bufferWidth, "x", bufferHeight, "format:", String(format: "0x%08X", format))
 
-      // verify whether source frames match encoder size.
-      // non-native presets intentionally capture at native and scale in software.
       if let configuredSize = configuredVideoSize {
         let configuredWidth = Int(configuredSize.width)
         let configuredHeight = Int(configuredSize.height)
         if bufferWidth != configuredWidth || bufferHeight != configuredHeight {
           Log.info(
-            "ReplayWriter: source/encode size mismatch; software scaling active. buffer:",
+            "ReplayWriter: source/encode size mismatch; dropping frame. buffer:",
             bufferWidth,
             "x",
             bufferHeight,
@@ -466,22 +492,26 @@ final class ReplayWriter: @unchecked Sendable {
           return
         }
 
-        let bufferToAppend: CVPixelBuffer
-        if let preparedBuffer = pixelBufferForEncoding(pixelBuffer, adaptor: adaptor) {
-          bufferToAppend = preparedBuffer
-        } else if let configuredSize = configuredVideoSize,
-                  (CVPixelBufferGetWidth(pixelBuffer) != Int(configuredSize.width)
-                    || CVPixelBufferGetHeight(pixelBuffer) != Int(configuredSize.height)) {
-          scaleFailureDrops += 1
-          if scaleFailureDrops == 1 || scaleFailureDrops % Constants.pendingVideoDropLogInterval == 0 {
-            Log.info("ReplayWriter.appendVideo scaling failed; dropping frame. drops:", scaleFailureDrops)
+        if let configuredSize = configuredVideoSize,
+           (CVPixelBufferGetWidth(pixelBuffer) != Int(configuredSize.width)
+            || CVPixelBufferGetHeight(pixelBuffer) != Int(configuredSize.height)) {
+          missingAdaptorDrops += 1
+          if missingAdaptorDrops <= Constants.missingAdaptorLogLimit {
+            Log.info(
+              "ReplayWriter.appendVideo pixel buffer size mismatch; dropping frame. buffer:",
+              CVPixelBufferGetWidth(pixelBuffer),
+              "x",
+              CVPixelBufferGetHeight(pixelBuffer),
+              "configured:",
+              Int(configuredSize.width),
+              "x",
+              Int(configuredSize.height)
+            )
           }
           return
-        } else {
-          bufferToAppend = pixelBuffer
         }
 
-        if !adaptor.append(bufferToAppend, withPresentationTime: pts) {
+        if !adaptor.append(pixelBuffer, withPresentationTime: pts) {
           logAppendFailure(
             label: "ReplayWriter.appendVideo adaptor append failed",
             writer: writer,
@@ -498,101 +528,6 @@ final class ReplayWriter: @unchecked Sendable {
         Log.info("ReplayWriter.appendVideo backpressure drop count:", videoBackpressureDrops)
       }
     }
-  }
-
-  private func pixelBufferForEncoding(
-    _ pixelBuffer: CVPixelBuffer,
-    adaptor: AVAssetWriterInputPixelBufferAdaptor
-  ) -> CVPixelBuffer? {
-    guard let configuredVideoSize else { return pixelBuffer }
-
-    let targetWidth = Int(configuredVideoSize.width.rounded())
-    let targetHeight = Int(configuredVideoSize.height.rounded())
-    let sourceWidth = CVPixelBufferGetWidth(pixelBuffer)
-    let sourceHeight = CVPixelBufferGetHeight(pixelBuffer)
-
-    guard sourceWidth != targetWidth || sourceHeight != targetHeight else {
-      return pixelBuffer
-    }
-
-    guard let pool = adaptor.pixelBufferPool else {
-      Log.info("ReplayWriter.appendVideo missing pixel buffer pool for scaling")
-      return nil
-    }
-
-    var scaledPixelBuffer: CVPixelBuffer?
-    let poolStatus = CVPixelBufferPoolCreatePixelBuffer(nil, pool, &scaledPixelBuffer)
-    guard poolStatus == kCVReturnSuccess, let scaledPixelBuffer else {
-      Log.info("ReplayWriter.appendVideo unable to create scaled pixel buffer. status:", poolStatus)
-      return nil
-    }
-
-    guard scaleBGRA(pixelBuffer, to: scaledPixelBuffer) else {
-      return nil
-    }
-
-    if !loggedFirstScaledFrame {
-      let scaledWidth = CVPixelBufferGetWidth(scaledPixelBuffer)
-      let scaledHeight = CVPixelBufferGetHeight(scaledPixelBuffer)
-      Log.info("ReplayWriter.appendVideo scaled frame:", sourceWidth, "x", sourceHeight, "->", scaledWidth, "x", scaledHeight)
-      loggedFirstScaledFrame = true
-    }
-
-    return scaledPixelBuffer
-  }
-
-  private func scaleBGRA(_ source: CVPixelBuffer, to destination: CVPixelBuffer) -> Bool {
-    let sourceFormat = CVPixelBufferGetPixelFormatType(source)
-    let destinationFormat = CVPixelBufferGetPixelFormatType(destination)
-    guard sourceFormat == kCVPixelFormatType_32BGRA,
-          destinationFormat == kCVPixelFormatType_32BGRA else {
-      Log.info(
-        "ReplayWriter.appendVideo unsupported scaling format. source:",
-        String(format: "0x%08X", sourceFormat),
-        "destination:",
-        String(format: "0x%08X", destinationFormat)
-      )
-      return false
-    }
-
-    CVPixelBufferLockBaseAddress(source, .readOnly)
-    CVPixelBufferLockBaseAddress(destination, [])
-    defer {
-      CVPixelBufferUnlockBaseAddress(destination, [])
-      CVPixelBufferUnlockBaseAddress(source, .readOnly)
-    }
-
-    guard let sourceBaseAddress = CVPixelBufferGetBaseAddress(source),
-          let destinationBaseAddress = CVPixelBufferGetBaseAddress(destination) else {
-      Log.info("ReplayWriter.appendVideo scaling base address unavailable")
-      return false
-    }
-
-    var sourceBuffer = vImage_Buffer(
-      data: sourceBaseAddress,
-      height: vImagePixelCount(CVPixelBufferGetHeight(source)),
-      width: vImagePixelCount(CVPixelBufferGetWidth(source)),
-      rowBytes: CVPixelBufferGetBytesPerRow(source)
-    )
-    var destinationBuffer = vImage_Buffer(
-      data: destinationBaseAddress,
-      height: vImagePixelCount(CVPixelBufferGetHeight(destination)),
-      width: vImagePixelCount(CVPixelBufferGetWidth(destination)),
-      rowBytes: CVPixelBufferGetBytesPerRow(destination)
-    )
-
-    let status = vImageScale_ARGB8888(
-      &sourceBuffer,
-      &destinationBuffer,
-      nil,
-      vImage_Flags(kvImageHighQualityResampling)
-    )
-    if status != kvImageNoError {
-      Log.info("ReplayWriter.appendVideo vImageScale_ARGB8888 failed. status:", status)
-      return false
-    }
-
-    return true
   }
 
   // - Append Audio --- 
