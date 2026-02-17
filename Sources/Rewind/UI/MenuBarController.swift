@@ -52,12 +52,19 @@ final class MenuBarController: NSObject, NSMenuDelegate {
     menu.addItem(.separator())
 
     let recordItem = NSMenuItem(
-      title: appState.isCapturing ? "Stop Recording" : "Start Recording",
+      title: recordingMenuItemTitle(
+        isCapturing: appState.isCapturing,
+        alwaysRecordEnabled: appState.alwaysRecordEnabled
+      ),
       action: #selector(toggleRecording),
       keyEquivalent: appState.startRecordingHotkey.menuKeyEquivalent
     )
     recordItem.keyEquivalentModifierMask = appState.startRecordingHotkey.modifierFlags
     recordItem.target = self
+    recordItem.isEnabled = recordingMenuItemEnabled(
+      isCapturing: appState.isCapturing,
+      alwaysRecordEnabled: appState.alwaysRecordEnabled
+    )
     recordingMenuItem = recordItem
     menu.addItem(recordItem)
 
@@ -294,6 +301,13 @@ final class MenuBarController: NSObject, NSMenuDelegate {
         self?.handleMenuStateChange()
       }
       .store(in: &cancellables)
+
+    appState.$alwaysRecordEnabled
+      .receive(on: DispatchQueue.main)
+      .sink { [weak self] _ in
+        self?.handleMenuStateChange()
+      }
+      .store(in: &cancellables)
   }
 
   private func handleMenuStateChange() {
@@ -305,7 +319,10 @@ final class MenuBarController: NSObject, NSMenuDelegate {
   }
 
   private func refreshMenuState() {
-    updateRecordingState(appState.isCapturing)
+    updateRecordingState(
+      isCapturing: appState.isCapturing,
+      alwaysRecordEnabled: appState.alwaysRecordEnabled
+    )
     updateDuration(appState.replayDuration)
     updateLastClip(appState.lastClip)
     updatePermissionState(appState.permissionState)
@@ -315,8 +332,15 @@ final class MenuBarController: NSObject, NSMenuDelegate {
     updateStartRecordingHotkey(appState.startRecordingHotkey)
   }
 
-  private func updateRecordingState(_ isCapturing: Bool) {
-    recordingMenuItem?.title = isCapturing ? "Stop Recording" : "Start Recording"
+  private func updateRecordingState(isCapturing: Bool, alwaysRecordEnabled: Bool) {
+    recordingMenuItem?.title = recordingMenuItemTitle(
+      isCapturing: isCapturing,
+      alwaysRecordEnabled: alwaysRecordEnabled
+    )
+    recordingMenuItem?.isEnabled = recordingMenuItemEnabled(
+      isCapturing: isCapturing,
+      alwaysRecordEnabled: alwaysRecordEnabled
+    )
     saveMenuItem?.isEnabled = isCapturing
     resolutionMenuItem?.isEnabled = !isCapturing
     qualityMenuItem?.isEnabled = !isCapturing
@@ -374,6 +398,17 @@ final class MenuBarController: NSObject, NSMenuDelegate {
     guard let recordingMenuItem else { return }
     recordingMenuItem.keyEquivalent = hotkey.menuKeyEquivalent
     recordingMenuItem.keyEquivalentModifierMask = hotkey.modifierFlags
+  }
+
+  private func recordingMenuItemTitle(isCapturing: Bool, alwaysRecordEnabled: Bool) -> String {
+    if alwaysRecordEnabled {
+      return isCapturing ? "Recording (Always)" : "Start Recording"
+    }
+    return isCapturing ? "Stop Recording" : "Start Recording"
+  }
+
+  private func recordingMenuItemEnabled(isCapturing: Bool, alwaysRecordEnabled: Bool) -> Bool {
+    !isCapturing || !alwaysRecordEnabled
   }
 
   // - Actions ---

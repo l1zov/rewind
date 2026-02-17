@@ -25,6 +25,7 @@ final class AppSettingsStorageTests: XCTestCase {
     XCTAssertEqual(settings.audioCodecID, AppSettings.default.audioCodecID)
     XCTAssertEqual(settings.hotkey, AppSettings.default.hotkey)
     XCTAssertEqual(settings.startRecordingHotkey, AppSettings.default.startRecordingHotkey)
+    XCTAssertEqual(settings.alwaysRecordEnabled, AppSettings.default.alwaysRecordEnabled)
     XCTAssertEqual(settings.saveFeedbackEnabled, AppSettings.default.saveFeedbackEnabled)
     XCTAssertEqual(settings.saveFeedbackVolume, AppSettings.default.saveFeedbackVolume)
     XCTAssertEqual(settings.saveFeedbackSoundID, AppSettings.default.saveFeedbackSoundID)
@@ -41,6 +42,7 @@ final class AppSettingsStorageTests: XCTestCase {
       audioCodecID: CaptureAudioCodec.aac.id,
       hotkey: Hotkey(keyCode: 0, modifiers: Hotkey.default.modifiers),
       startRecordingHotkey: Hotkey.startRecordingDefault,
+      alwaysRecordEnabled: true,
       saveFeedbackEnabled: false,
       saveFeedbackVolume: 15,
       saveFeedbackSoundID: SaveFeedbackSound.pop.id,
@@ -58,6 +60,7 @@ final class AppSettingsStorageTests: XCTestCase {
     XCTAssertEqual(loaded.audioCodecID, expected.audioCodecID)
     XCTAssertEqual(loaded.hotkey, expected.hotkey)
     XCTAssertEqual(loaded.startRecordingHotkey, expected.startRecordingHotkey)
+    XCTAssertEqual(loaded.alwaysRecordEnabled, expected.alwaysRecordEnabled)
     XCTAssertEqual(loaded.saveFeedbackEnabled, expected.saveFeedbackEnabled)
     XCTAssertEqual(loaded.saveFeedbackVolume, expected.saveFeedbackVolume)
     XCTAssertEqual(loaded.saveFeedbackSoundID, expected.saveFeedbackSoundID)
@@ -74,6 +77,7 @@ final class AppSettingsStorageTests: XCTestCase {
       audioCodecID: "nope",
       hotkey: Hotkey(keyCode: 999, modifiers: 0),
       startRecordingHotkey: Hotkey(keyCode: 998, modifiers: 0),
+      alwaysRecordEnabled: true,
       saveFeedbackEnabled: true,
       saveFeedbackVolume: 300,
       saveFeedbackSoundID: "1234556789blahhhh",
@@ -93,6 +97,7 @@ final class AppSettingsStorageTests: XCTestCase {
     XCTAssertEqual(loaded.audioCodecID, AppSettings.default.audioCodecID)
     XCTAssertEqual(loaded.hotkey, AppSettings.default.hotkey)
     XCTAssertEqual(loaded.startRecordingHotkey, AppSettings.default.startRecordingHotkey)
+    XCTAssertEqual(loaded.alwaysRecordEnabled, AppSettings.default.alwaysRecordEnabled)
     XCTAssertEqual(loaded.saveFeedbackEnabled, AppSettings.default.saveFeedbackEnabled)
     XCTAssertEqual(loaded.saveFeedbackVolume, AppSettings.default.saveFeedbackVolume)
     XCTAssertEqual(loaded.saveFeedbackSoundID, AppSettings.default.saveFeedbackSoundID)
@@ -112,6 +117,7 @@ final class AppSettingsStorageTests: XCTestCase {
     XCTAssertEqual(loaded.audioCodecID, AppSettings.default.audioCodecID)
     XCTAssertEqual(loaded.hotkey, AppSettings.default.hotkey)
     XCTAssertEqual(loaded.startRecordingHotkey, AppSettings.default.startRecordingHotkey)
+    XCTAssertEqual(loaded.alwaysRecordEnabled, AppSettings.default.alwaysRecordEnabled)
     XCTAssertEqual(loaded.saveFeedbackEnabled, AppSettings.default.saveFeedbackEnabled)
     XCTAssertEqual(loaded.saveFeedbackVolume, AppSettings.default.saveFeedbackVolume)
     XCTAssertEqual(loaded.saveFeedbackSoundID, AppSettings.default.saveFeedbackSoundID)
@@ -128,6 +134,7 @@ final class AppSettingsStorageTests: XCTestCase {
       audioCodecID: AppSettings.default.audioCodecID,
       hotkey: AppSettings.default.hotkey,
       startRecordingHotkey: AppSettings.default.startRecordingHotkey,
+      alwaysRecordEnabled: AppSettings.default.alwaysRecordEnabled,
       saveFeedbackEnabled: AppSettings.default.saveFeedbackEnabled,
       saveFeedbackVolume: AppSettings.default.saveFeedbackVolume,
       saveFeedbackSoundID: AppSettings.default.saveFeedbackSoundID,

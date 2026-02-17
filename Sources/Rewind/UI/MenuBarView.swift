@@ -15,10 +15,11 @@ struct MenuBarView: View {
       .frame(maxWidth: .infinity, alignment: .leading)
 
       HStack(spacing: 10) {
-        Button(appState.isCapturing ? "Stop" : "Start") {
-          appState.isCapturing ? appState.stopCapture() : appState.startCapture()
+        Button(recordingButtonTitle) {
+          appState.toggleCapture()
         }
         .buttonStyle(.borderedProminent)
+        .disabled(appState.alwaysRecordEnabled && appState.isCapturing)
 
         Button("Save Last \(Int(appState.replayDuration))s") {
           appState.saveReplay()
@@ -75,5 +76,12 @@ struct MenuBarView: View {
       .font(.system(size: 12))
     }
     .padding(16)
+  }
+
+  private var recordingButtonTitle: String {
+    if appState.alwaysRecordEnabled {
+      return appState.isCapturing ? "Recording (Always)" : "Start"
+    }
+    return appState.isCapturing ? "Stop" : "Start"
   }
 }

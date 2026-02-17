@@ -15,6 +15,7 @@ struct AppSettings: Codable, Sendable {
   var audioCodecID: String
   var hotkey: Hotkey
   var startRecordingHotkey: Hotkey
+  var alwaysRecordEnabled: Bool
   var saveFeedbackEnabled: Bool
   var saveFeedbackVolume: Double
   var saveFeedbackSoundID: String
@@ -29,6 +30,7 @@ struct AppSettings: Codable, Sendable {
     audioCodecID: CaptureAudioCodec.default.id,
     hotkey: .default,
     startRecordingHotkey: .startRecordingDefault,
+    alwaysRecordEnabled: false,
     saveFeedbackEnabled: true,
     saveFeedbackVolume: 20,
     saveFeedbackSoundID: SaveFeedbackSound.default.id,
@@ -44,6 +46,7 @@ struct AppSettings: Codable, Sendable {
     case audioCodecID
     case hotkey
     case startRecordingHotkey
+    case alwaysRecordEnabled = "autoRecordEnabled"
     case saveFeedbackEnabled
     case saveFeedbackVolume
     case saveFeedbackSoundID
@@ -59,6 +62,7 @@ struct AppSettings: Codable, Sendable {
     audioCodecID: String,
     hotkey: Hotkey,
     startRecordingHotkey: Hotkey,
+    alwaysRecordEnabled: Bool,
     saveFeedbackEnabled: Bool,
     saveFeedbackVolume: Double,
     saveFeedbackSoundID: String,
@@ -72,6 +76,7 @@ struct AppSettings: Codable, Sendable {
     self.audioCodecID = audioCodecID
     self.hotkey = hotkey
     self.startRecordingHotkey = startRecordingHotkey
+    self.alwaysRecordEnabled = alwaysRecordEnabled
     self.saveFeedbackEnabled = saveFeedbackEnabled
     self.saveFeedbackVolume = saveFeedbackVolume
     self.saveFeedbackSoundID = saveFeedbackSoundID
@@ -89,6 +94,7 @@ struct AppSettings: Codable, Sendable {
     hotkey = try container.decode(Hotkey.self, forKey: .hotkey)
     startRecordingHotkey = try container.decodeIfPresent(Hotkey.self, forKey: .startRecordingHotkey)
       ?? .startRecordingDefault
+    alwaysRecordEnabled = try container.decodeIfPresent(Bool.self, forKey: .alwaysRecordEnabled) ?? false
     saveFeedbackEnabled = try container.decodeIfPresent(Bool.self, forKey: .saveFeedbackEnabled) ?? true
     saveFeedbackVolume = try container.decodeIfPresent(Double.self, forKey: .saveFeedbackVolume)
       ?? AppSettings.default.saveFeedbackVolume

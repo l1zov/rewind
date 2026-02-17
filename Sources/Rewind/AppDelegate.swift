@@ -42,6 +42,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
       }
       .store(in: &cancellables)
+
+    AppState.shared.startAlwaysRecording()
   }
 
   func applicationWillTerminate(_ notification: Notification) {

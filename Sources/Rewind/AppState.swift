@@ -82,6 +82,16 @@ final class AppState: ObservableObject {
       updateGlobalHotkeys()
     }
   }
+  @Published var alwaysRecordEnabled = AppSettings.default.alwaysRecordEnabled {
+    didSet {
+      guard !isRestoringSettings else { return }
+      guard alwaysRecordEnabled != oldValue else { return }
+      persistSettings()
+      if alwaysRecordEnabled {
+        startCapture()
+      }
+    }
+  }
   @Published var saveFeedbackEnabled = AppSettings.default.saveFeedbackEnabled {
     didSet {
       guard !isRestoringSettings else { return }
@@ -140,6 +150,7 @@ final class AppState: ObservableObject {
   private var discordPresenceRetryTask: Task<Void, Never>?
   private var preferredResolutionID: String?
   private var isRestoringSettings = false
+  private var isTerminatingForCaptureIssue = false
 
   private init() {
     permissionState = PermissionManager.currentState()
@@ -153,6 +164,7 @@ final class AppState: ObservableObject {
     preferredResolutionID = settings.resolutionID
     hotkey = settings.hotkey
     startRecordingHotkey = settings.startRecordingHotkey
+    alwaysRecordEnabled = settings.alwaysRecordEnabled
     saveFeedbackEnabled = settings.saveFeedbackEnabled
     saveFeedbackVolume = settings.saveFeedbackVolume
     saveFeedbackSound = settings.saveFeedbackSound
@@ -160,8 +172,7 @@ final class AppState: ObservableObject {
     isRestoringSettings = false
     Task { [weak self] in
         await self?.captureManager.setOnCaptureInterruptedHandler { error in
-          self?.isCapturing = false
-          AppLog.error(.app, "Capture interrupted:", error)
+          self?.handleCaptureInterrupted(error)
         }
       }
     Task { await loadAvailableResolutions() }
@@ -176,7 +187,13 @@ final class AppState: ObservableObject {
     Task { await startCaptureAsync() }
   }
 
+  func startAlwaysRecording() {
+    guard alwaysRecordEnabled else { return }
+    startCapture()
+  }
+
   func stopCapture() {
+    guard !alwaysRecordEnabled else { return }
     Task { await stopCaptureAsync() }
   }
 
@@ -186,6 +203,7 @@ final class AppState: ObservableObject {
 
   func toggleCapture() {
     if isCapturing {
+      guard !alwaysRecordEnabled else { return }
       stopCapture()
     } else {
       startCapture()
@@ -358,6 +376,15 @@ final class AppState: ObservableObject {
     permissionState = PermissionManager.currentState()
   }
 
+  private func handleCaptureInterrupted(_ error: Error) {
+    isCapturing = false
+    updateDiscordActivity(.idle)
+    AppLog.error(.app, "Capture interrupted:", error)
+    guard alwaysRecordEnabled, !isTerminatingForCaptureIssue else { return }
+    isTerminatingForCaptureIssue = true
+    NSApp.terminate(nil)
+  }
+
   private func updateGlobalHotkeys() {
     GlobalHotkeyManager.shared.updateHotkeys(
       saveReplay: hotkey,
@@ -376,6 +403,7 @@ final class AppState: ObservableObject {
         audioCodecID: selectedAudioCodec.id,
         hotkey: hotkey,
         startRecordingHotkey: startRecordingHotkey,
+        alwaysRecordEnabled: alwaysRecordEnabled,
         saveFeedbackEnabled: saveFeedbackEnabled,
         saveFeedbackVolume: saveFeedbackVolume,
         saveFeedbackSoundID: saveFeedbackSound.id,

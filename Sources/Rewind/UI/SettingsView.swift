@@ -123,6 +123,13 @@ struct SettingsView: View {
             }
           }
 
+          settingsRow("Always record") {
+            Toggle("", isOn: $appState.alwaysRecordEnabled)
+              .labelsHidden()
+              .toggleStyle(.switch)
+              .frame(maxWidth: .infinity, alignment: .trailing)
+          }
+
           Divider()
 
           sectionHeader("Hotkeys")
