@@ -13,6 +13,16 @@ final class GlobalHotkeyManager {
   private var eventHandler: EventHandlerRef?
   private var saveReplayHotkey: Hotkey = .default
   private var recordToggleHotkey: Hotkey = .startRecordingDefault
+  private var onSaveReplay: (() -> Void)?
+  private var onRecordToggle: (() -> Void)?
+
+  func configureActions(
+    onSaveReplay: (() -> Void)?,
+    onRecordToggle: (() -> Void)?
+  ) {
+    self.onSaveReplay = onSaveReplay
+    self.onRecordToggle = onRecordToggle
+  }
 
   func register(
     saveReplayHotkey: Hotkey = .default,
@@ -141,9 +151,9 @@ final class GlobalHotkeyManager {
 
     switch hotKeyID.id {
     case saveReplayHotKeyId:
-      AppState.shared.saveReplay()
+      onSaveReplay?()
     case recordToggleHotKeyId:
-      AppState.shared.toggleCapture()
+      onRecordToggle?()
     default:
       return
     }

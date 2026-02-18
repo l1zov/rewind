@@ -3,14 +3,23 @@ import SwiftUI
 
 @MainActor
 final class OnboardingWindowController: NSObject, NSWindowDelegate {
-  static let shared = OnboardingWindowController()
-
   private let shownKey = "ui.onboarding.shown.v1"
+  private let settingsWindowController: SettingsWindowController
+  private let userDefaults: UserDefaults
   private var window: NSWindow?
 
+  init(
+    settingsWindowController: SettingsWindowController,
+    userDefaults: UserDefaults = .standard
+  ) {
+    self.settingsWindowController = settingsWindowController
+    self.userDefaults = userDefaults
+    super.init()
+  }
+
   func showIfNeeded() {
-    guard UserDefaults.standard.bool(forKey: shownKey) == false else { return }
-    UserDefaults.standard.set(true, forKey: shownKey)
+    guard userDefaults.bool(forKey: shownKey) == false else { return }
+    userDefaults.set(true, forKey: shownKey)
     show()
   }
 
@@ -18,7 +27,7 @@ final class OnboardingWindowController: NSObject, NSWindowDelegate {
     if window == nil {
       let view = OnboardingView(
         openSettings: {
-          SettingsWindowController.shared.show()
+          self.settingsWindowController.show()
         },
         close: { [weak self] in
           self?.window?.close()

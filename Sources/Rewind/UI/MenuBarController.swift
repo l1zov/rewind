@@ -6,6 +6,7 @@ import SwiftUI
 final class MenuBarController: NSObject, NSMenuDelegate {
   private let statusItem: NSStatusItem
   private let appState: AppState
+  private let onOpenSettings: () -> Void
   private var cancellables = Set<AnyCancellable>()
 
   // these need dynamic updates
@@ -20,8 +21,9 @@ final class MenuBarController: NSObject, NSMenuDelegate {
   private var isMenuOpen = false
   private var needsMenuRefresh = false
 
-  init(appState: AppState) {
+  init(appState: AppState, onOpenSettings: @escaping () -> Void) {
     self.appState = appState
+    self.onOpenSettings = onOpenSettings
     statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
     super.init()
 
@@ -239,70 +241,20 @@ final class MenuBarController: NSObject, NSMenuDelegate {
   }
 
   private func observeAppState() {
-    appState.$isCapturing
-      .receive(on: DispatchQueue.main)
-      .sink { [weak self] _ in
-        self?.handleMenuStateChange()
-      }
-      .store(in: &cancellables)
+    observeState(appState.$isCapturing)
+    observeState(appState.$replayDuration)
+    observeState(appState.$lastClip)
+    observeState(appState.$permissionState)
+    observeState(appState.$availableResolutions)
+    observeState(appState.$selectedResolution)
+    observeState(appState.$selectedQuality)
+    observeState(appState.$hotkey)
+    observeState(appState.$startRecordingHotkey)
+    observeState(appState.$alwaysRecordEnabled)
+  }
 
-    appState.$replayDuration
-      .receive(on: DispatchQueue.main)
-      .sink { [weak self] _ in
-        self?.handleMenuStateChange()
-      }
-      .store(in: &cancellables)
-
-    appState.$lastClip
-      .receive(on: DispatchQueue.main)
-      .sink { [weak self] _ in
-        self?.handleMenuStateChange()
-      }
-      .store(in: &cancellables)
-
-    appState.$permissionState
-      .receive(on: DispatchQueue.main)
-      .sink { [weak self] _ in
-        self?.handleMenuStateChange()
-      }
-      .store(in: &cancellables)
-
-    appState.$availableResolutions
-      .receive(on: DispatchQueue.main)
-      .sink { [weak self] _ in
-        self?.handleMenuStateChange()
-      }
-      .store(in: &cancellables)
-
-    appState.$selectedResolution
-      .receive(on: DispatchQueue.main)
-      .sink { [weak self] _ in
-        self?.handleMenuStateChange()
-      }
-      .store(in: &cancellables)
-
-    appState.$selectedQuality
-      .receive(on: DispatchQueue.main)
-      .sink { [weak self] _ in
-        self?.handleMenuStateChange()
-      }
-      .store(in: &cancellables)
-
-    appState.$hotkey
-      .receive(on: DispatchQueue.main)
-      .sink { [weak self] _ in
-        self?.handleMenuStateChange()
-      }
-      .store(in: &cancellables)
-
-    appState.$startRecordingHotkey
-      .receive(on: DispatchQueue.main)
-      .sink { [weak self] _ in
-        self?.handleMenuStateChange()
-      }
-      .store(in: &cancellables)
-
-    appState.$alwaysRecordEnabled
+  private func observeState<Value>(_ publisher: Published<Value>.Publisher) {
+    publisher
       .receive(on: DispatchQueue.main)
       .sink { [weak self] _ in
         self?.handleMenuStateChange()
@@ -445,7 +397,7 @@ final class MenuBarController: NSObject, NSMenuDelegate {
   }
 
   @objc private func openSettings() {
-    SettingsWindowController.shared.show()
+    onOpenSettings()
   }
 
   // - NSMenuDelegate ---

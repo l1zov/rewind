@@ -3,14 +3,17 @@ import SwiftUI
 
 @MainActor
 final class SettingsWindowController: NSObject, NSWindowDelegate {
-  static let shared = SettingsWindowController()
-
+  private let appState: AppState
   private var window: NSWindow?
+
+  init(appState: AppState) {
+    self.appState = appState
+    super.init()
+  }
 
   func show() {
     if window == nil {
-      let settingsView = SettingsView()
-        .environmentObject(AppState.shared)
+      let settingsView = SettingsView(appState: appState)
       let hostingController = NSHostingController(rootView: settingsView)
 
       let window = NSWindow(contentViewController: hostingController)

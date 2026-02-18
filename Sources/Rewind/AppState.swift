@@ -8,8 +8,6 @@ final class AppState: ObservableObject {
     static let thresholdBytes: Int64 = 5 * 1024 * 1024 * 1024
   }
 
-  static let shared = AppState()
-
   @Published private(set) var isCapturing = false
   @Published var replayDuration: TimeInterval = 30 {
     didSet {
@@ -141,9 +139,10 @@ final class AppState: ObservableObject {
   }
   @Published private(set) var lowStorageWarningMessage: String?
 
-  private let captureManager = CaptureManager()
-  private let clipLibrary = ClipLibrary()
-  private let discordRPCClient = DiscordRPCClient()
+  private let captureManager: CaptureManager
+  private let clipLibrary: ClipLibrary
+  private let discordRPCClient: DiscordRPCClient
+  private let hotkeyManager: GlobalHotkeyManager
   private var replaySavedSound: NSSound?
   private var replaySavedBoostSound: NSSound?
   private var discordActivityState: DiscordActivityState = .idle
@@ -152,7 +151,17 @@ final class AppState: ObservableObject {
   private var isRestoringSettings = false
   private var isTerminatingForCaptureIssue = false
 
-  private init() {
+  init(
+    captureManager: CaptureManager = CaptureManager(),
+    clipLibrary: ClipLibrary = ClipLibrary(),
+    discordRPCClient: DiscordRPCClient = DiscordRPCClient(),
+    hotkeyManager: GlobalHotkeyManager = .shared
+  ) {
+    self.captureManager = captureManager
+    self.clipLibrary = clipLibrary
+    self.discordRPCClient = discordRPCClient
+    self.hotkeyManager = hotkeyManager
+
     permissionState = PermissionManager.currentState()
     let settings = AppSettingsStorage.load()
     isRestoringSettings = true
@@ -171,10 +180,10 @@ final class AppState: ObservableObject {
     discordRPCEnabled = settings.discordRPCEnabled
     isRestoringSettings = false
     Task { [weak self] in
-        await self?.captureManager.setOnCaptureInterruptedHandler { error in
-          self?.handleCaptureInterrupted(error)
-        }
+      await self?.captureManager.setOnCaptureInterruptedHandler { error in
+        self?.handleCaptureInterrupted(error)
       }
+    }
     Task { await loadAvailableResolutions() }
     refreshStorageWarning()
     Task {
@@ -260,8 +269,8 @@ final class AppState: ObservableObject {
     }
 
     availableResolutions = []
-    resolutionLoadingMessage = "Loaded not resolutions"
-    AppLog.error(.app, "Resolutions didnt load after multiple tries")
+    resolutionLoadingMessage = "Could not load resolutions"
+    AppLog.error(.app, "Resolutions did not load after multiple tries")
   }
 
   private func startCaptureAsync() async {
@@ -386,7 +395,7 @@ final class AppState: ObservableObject {
   }
 
   private func updateGlobalHotkeys() {
-    GlobalHotkeyManager.shared.updateHotkeys(
+    hotkeyManager.updateHotkeys(
       saveReplay: hotkey,
       recordToggle: startRecordingHotkey
     )

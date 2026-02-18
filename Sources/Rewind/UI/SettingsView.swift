@@ -3,7 +3,7 @@ import Carbon
 import SwiftUI
 
 struct SettingsView: View {
-  @EnvironmentObject private var appState: AppState
+  @ObservedObject var appState: AppState
   private let rowLabelWidth: CGFloat = 130
   private let durationFormatter: NumberFormatter = {
     let formatter = NumberFormatter()
@@ -59,11 +59,35 @@ struct SettingsView: View {
           }
 
           settingsRow("Resolution") {
-            HStack(spacing: 0) {
-              Spacer(minLength: 0)
-              Color.clear
-                .frame(width: 180, height: 1)
-                .accessibilityHidden(true)
+            if appState.availableResolutions.isEmpty {
+              HStack(spacing: 8) {
+                Spacer(minLength: 0)
+
+                if appState.isLoadingResolutions {
+                  ProgressView()
+                    .controlSize(.small)
+                } else {
+                  Text(appState.resolutionLoadingMessage ?? "Resolution unavailable")
+                    .foregroundStyle(.secondary)
+                    .font(.system(size: 12))
+                  Button("Reload") {
+                    appState.refreshResolutions()
+                  }
+                  .buttonStyle(.link)
+                }
+              }
+            } else {
+              HStack(spacing: 0) {
+                Spacer(minLength: 0)
+                Picker("Resolution", selection: $appState.selectedResolution) {
+                  ForEach(appState.availableResolutions) { resolution in
+                    Text(resolution.label).tag(Optional(resolution))
+                  }
+                }
+                .frame(width: 180)
+                .labelsHidden()
+                .pickerStyle(.menu)
+              }
             }
           }
 
