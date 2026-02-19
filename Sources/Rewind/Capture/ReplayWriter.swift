@@ -72,7 +72,6 @@ final class ReplayWriter: @unchecked Sendable {
   /// queue to buffer audio samples before video session starts
   private var pendingAudioSamples: ArraySlice<CMSampleBuffer> = []
   private var pendingAudioDrops = 0
-  private var audioRequestStarted = false
   private var pendingVideoSamples: ArraySlice<CMSampleBuffer> = []
   private var pendingVideoDrops = 0
 
@@ -274,7 +273,6 @@ final class ReplayWriter: @unchecked Sendable {
     pendingVideoSamples.removeAll()
     pendingVideoDrops = 0
     pendingAudioDrops = 0
-    audioRequestStarted = false
     firstAudioPTS = CMTime.invalid
     firstVideoPTS = CMTime.invalid
     if resetReconfigureCount {
@@ -361,7 +359,7 @@ final class ReplayWriter: @unchecked Sendable {
     guard writer.status == .writing else { return }
     appendVideoSample(sampleBuffer, writer: writer, videoInput: videoInput)
     if let audioInput = audioInput {
-      startAudioRequestIfNeeded(audioInput: audioInput, writer: writer)
+      drainPendingAudioWhileReady(audioInput: audioInput, writer: writer)
     }
   }
 
@@ -600,9 +598,6 @@ final class ReplayWriter: @unchecked Sendable {
     if !pendingAudioSamples.isEmpty {
       enqueuePendingAudioSample(sampleBuffer)
       drainPendingAudioWhileReady(audioInput: audioInput, writer: writer)
-      if !pendingAudioSamples.isEmpty {
-        startAudioRequestIfNeeded(audioInput: audioInput, writer: writer)
-      }
       return
     }
 
@@ -616,7 +611,6 @@ final class ReplayWriter: @unchecked Sendable {
       drainPendingAudioWhileReady(audioInput: audioInput, writer: writer)
     } else {
       enqueuePendingAudioSample(sampleBuffer)
-      startAudioRequestIfNeeded(audioInput: audioInput, writer: writer)
     }
   }
 
@@ -846,21 +840,6 @@ final class ReplayWriter: @unchecked Sendable {
     }
   }
 
-  private func startAudioRequestIfNeeded(audioInput: AVAssetWriterInput, writer: AVAssetWriter) {
-    guard !audioRequestStarted else { return }
-    audioRequestStarted = true
-    audioInput.requestMediaDataWhenReady(on: queue) { [weak self] in
-      guard let self else { return }
-      if !self.acceptsMediaData || writer.status != .writing {
-        return
-      }
-      guard !self.pendingAudioSamples.isEmpty else {
-        return
-      }
-      self.drainPendingAudioWhileReady(audioInput: audioInput, writer: writer)
-    }
-  }
-
   private func drainPendingVideoIfReady(writer: AVAssetWriter, videoInput: AVAssetWriterInput) {
     guard !pendingVideoSamples.isEmpty,
           writer.status == .writing,
@@ -902,7 +881,7 @@ final class ReplayWriter: @unchecked Sendable {
     if droppedCount > 0 {
       Log.info("ReplayWriter: flushed pending audio, dropped:", droppedCount)
     }
-    startAudioRequestIfNeeded(audioInput: audioInput, writer: writer)
+    drainPendingAudioWhileReady(audioInput: audioInput, writer: writer)
   }
 
   private func flushPendingVideoSamples(writer: AVAssetWriter, videoInput: AVAssetWriterInput) {
