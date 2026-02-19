@@ -109,7 +109,7 @@ final class ScreenCaptureService: NSObject, SCStreamOutput, SCStreamDelegate, @u
     config.width = Int(outputSize.width)
     config.height = Int(outputSize.height)
     config.scalesToFit = !targetResolution.isNative
-    config.queueDepth = 15
+    config.queueDepth = 5
     config.pixelFormat = capturePixelFormat(for: quality)
     config.colorSpaceName = CGColorSpace.extendedSRGB
     config.capturesAudio = true

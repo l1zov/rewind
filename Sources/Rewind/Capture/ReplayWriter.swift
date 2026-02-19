@@ -236,7 +236,7 @@ final class ReplayWriter: @unchecked Sendable {
       AVVideoExpectedSourceFrameRateKey: normalizedFrameRate,
       AVVideoMaxKeyFrameIntervalKey: keyframeInterval,
       AVVideoMaxKeyFrameIntervalDurationKey: 1.5,
-      AVVideoAllowFrameReorderingKey: true
+      AVVideoAllowFrameReorderingKey: false
     ]
   }
 
