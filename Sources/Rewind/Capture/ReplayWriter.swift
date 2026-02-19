@@ -11,11 +11,8 @@ final class ReplayWriter: @unchecked Sendable {
     static let maxPendingAudioSamples = 240
     static let maxPendingVideoSamples = 120
     static let audioJitterTolerance = CMTime(seconds: 0.005, preferredTimescale: 1_000)
-    static let maxAudioPTSAdjustment = CMTime(seconds: 0.35, preferredTimescale: 600)
-    static let audioBufferingWindow = CMTime(seconds: 0.30, preferredTimescale: 600)
-    static let startupOffsetWindow = CMTime(seconds: 0.30, preferredTimescale: 600)
-    static let startupOffsetMinSamplesPerTrack = 6
-    static let startupOffsetMaxSamplesPerTrack = 180
+    static let maxAudioPTSAdjustment = CMTime(seconds: 0.15, preferredTimescale: 600)
+    static let audioBufferingWindow = CMTime(seconds: 0.20, preferredTimescale: 600)
     static let audioSyncTolerance = CMTime(seconds: 0.02, preferredTimescale: 48_000)
     static let videoSyncTolerance = CMTime(seconds: 0.02, preferredTimescale: 600)
     static let audioGapThreshold = CMTime(seconds: 0.04, preferredTimescale: 1_000)
@@ -81,9 +78,6 @@ final class ReplayWriter: @unchecked Sendable {
   /// track the first audio sample PTS to detect audio-video timestamp offset
   private var firstAudioPTS = CMTime.invalid
   private var firstVideoPTS = CMTime.invalid
-  private var startupAudioPTSSeconds: [Double] = []
-  private var startupVideoPTSSeconds: [Double] = []
-  private var startupCollectionEndPTS = CMTime.invalid
 
   // - Init ---
 
@@ -281,9 +275,6 @@ final class ReplayWriter: @unchecked Sendable {
     pendingAudioDrops = 0
     firstAudioPTS = CMTime.invalid
     firstVideoPTS = CMTime.invalid
-    startupAudioPTSSeconds.removeAll(keepingCapacity: false)
-    startupVideoPTSSeconds.removeAll(keepingCapacity: false)
-    startupCollectionEndPTS = CMTime.invalid
     if resetReconfigureCount {
       reconfigureCount = 0
     }
@@ -341,7 +332,6 @@ final class ReplayWriter: @unchecked Sendable {
     if !firstVideoPTS.isValid {
       firstVideoPTS = pts
     }
-    recordStartupSamplePTS(pts, isAudio: false)
 
     if !sessionStarted {
       enqueuePendingVideoSample(sampleBuffer)
@@ -575,12 +565,6 @@ final class ReplayWriter: @unchecked Sendable {
     if !firstAudioPTS.isValid || pts < firstAudioPTS {
       firstAudioPTS = pts
     }
-    recordStartupSamplePTS(pts, isAudio: true)
-
-    if !loggedFirstAudioBuffer {
-      logAudioFormat(sampleBuffer)
-      loggedFirstAudioBuffer = true
-    }
 
     // buffer audio samples until session starts to prevent audio loss
     guard sessionStarted, writer.status == .writing, sessionStartPTS.isValid else {
@@ -596,8 +580,12 @@ final class ReplayWriter: @unchecked Sendable {
     }
     if audioBufferingEndPTS.isValid {
       audioBufferingEndPTS = .invalid
-      finalizeStartupAudioOffsetIfNeeded(force: true)
       flushPendingAudioSamples(audioInput: audioInput, writer: writer)
+    }
+
+    if !loggedFirstAudioBuffer {
+      logAudioFormat(sampleBuffer)
+      loggedFirstAudioBuffer = true
     }
 
     if lastAudioEndPTS.isValid, pts > lastAudioEndPTS {
@@ -613,17 +601,8 @@ final class ReplayWriter: @unchecked Sendable {
       return
     }
 
-    let minAcceptedAudioPTS: CMTime
-    if audioPTSOffsetValid {
-      minAcceptedAudioPTS = CMTimeAdd(
-        CMTimeSubtract(sessionStartPTS, Constants.audioSyncTolerance),
-        audioPTSOffset
-      )
-    } else {
-      minAcceptedAudioPTS = CMTimeSubtract(sessionStartPTS, Constants.audioSyncTolerance)
-    }
-
-    if pts < minAcceptedAudioPTS {
+    // tight tolerance; audio should not be significantly before our session start
+    if pts < CMTimeSubtract(sessionStartPTS, Constants.audioSyncTolerance) {
       return
     }
 
@@ -660,6 +639,9 @@ final class ReplayWriter: @unchecked Sendable {
     guard audioPTSOffsetValid else { return sampleBuffer }
     let pts = CMSampleBufferGetPresentationTimeStamp(sampleBuffer)
     let baselinePTS = CMTimeSubtract(pts, audioPTSOffset)
+    guard let sampleDuration = audioDurationForSample(sampleBuffer),
+          sampleDuration.isValid,
+          sampleDuration > .zero else { return sampleBuffer }
 
     var timingInfoCount = 0
     CMSampleBufferGetSampleTimingInfoArray(sampleBuffer, entryCount: 0, arrayToFill: nil, entriesNeededOut: &timingInfoCount)
@@ -882,12 +864,7 @@ final class ReplayWriter: @unchecked Sendable {
       Log.info("ReplayWriter: audio-video offset:", audioVideoOffset.seconds * 1000, "ms (audio started earlier)")
     }
 
-    let minValidPTS: CMTime
-    if audioPTSOffsetValid {
-      minValidPTS = CMTimeAdd(sessionStartPTS, audioPTSOffset)
-    } else {
-      minValidPTS = sessionStartPTS
-    }
+    let minValidPTS = sessionStartPTS
 
     var droppedCount = 0
     var remaining: [CMSampleBuffer] = []
@@ -963,7 +940,19 @@ final class ReplayWriter: @unchecked Sendable {
     writer.startSession(atSourceTime: referencePTS)
     sessionStarted = true
     audioBufferingEndPTS = CMTimeAdd(referencePTS, Constants.audioBufferingWindow)
-    startupCollectionEndPTS = CMTimeAdd(referencePTS, Constants.startupOffsetWindow)
+
+    if firstAudioPTS.isValid, firstVideoPTS.isValid {
+      let offset = CMTimeSubtract(firstAudioPTS, firstVideoPTS)
+      let adjustedOffset = CMTimeMaximum(offset, .zero)
+      if adjustedOffset <= Constants.maxAudioPTSAdjustment {
+        audioPTSOffset = adjustedOffset
+        audioPTSOffsetValid = true
+      } else {
+        audioPTSOffset = .zero
+        audioPTSOffsetValid = true
+      }
+      Log.info("ReplayWriter: audio PTS offset (audio follows video):", audioPTSOffset.seconds * 1000, "ms")
+    }
 
     flushPendingVideoSamples(writer: writer, videoInput: videoInput)
     if let audioInput = audioInput {
@@ -1108,74 +1097,6 @@ final class ReplayWriter: @unchecked Sendable {
              "fmt:", asbd.mFormatID,
              "flags:", asbd.mFormatFlags,
              "bytesPerFrame:", asbd.mBytesPerFrame)
-  }
-
-  private func recordStartupSamplePTS(_ pts: CMTime, isAudio: Bool) {
-    guard pts.isValid else { return }
-    let seconds = pts.seconds
-    guard seconds.isFinite else { return }
-
-    if startupCollectionEndPTS.isValid, pts > startupCollectionEndPTS {
-      return
-    }
-
-    if isAudio {
-      startupAudioPTSSeconds.append(seconds)
-      if startupAudioPTSSeconds.count > Constants.startupOffsetMaxSamplesPerTrack {
-        startupAudioPTSSeconds.removeFirst(startupAudioPTSSeconds.count - Constants.startupOffsetMaxSamplesPerTrack)
-      }
-    } else {
-      startupVideoPTSSeconds.append(seconds)
-      if startupVideoPTSSeconds.count > Constants.startupOffsetMaxSamplesPerTrack {
-        startupVideoPTSSeconds.removeFirst(startupVideoPTSSeconds.count - Constants.startupOffsetMaxSamplesPerTrack)
-      }
-    }
-  }
-
-  private func finalizeStartupAudioOffsetIfNeeded(force: Bool) {
-    guard !audioPTSOffsetValid else { return }
-
-    let minSamples = Constants.startupOffsetMinSamplesPerTrack
-    let hasWindowSamples = startupAudioPTSSeconds.count >= minSamples && startupVideoPTSSeconds.count >= minSamples
-
-    let rawOffsetSeconds: Double
-    if hasWindowSamples,
-       let audioMedian = median(startupAudioPTSSeconds),
-       let videoMedian = median(startupVideoPTSSeconds) {
-      rawOffsetSeconds = audioMedian - videoMedian
-    } else if force, firstAudioPTS.isValid, firstVideoPTS.isValid {
-      rawOffsetSeconds = firstAudioPTS.seconds - firstVideoPTS.seconds
-    } else {
-      return
-    }
-
-    let maxAdjustmentSeconds = Constants.maxAudioPTSAdjustment.seconds
-    let appliedOffsetSeconds = max(-maxAdjustmentSeconds, min(maxAdjustmentSeconds, rawOffsetSeconds))
-
-    audioPTSOffset = CMTime(seconds: appliedOffsetSeconds, preferredTimescale: 600)
-    audioPTSOffsetValid = true
-    startupCollectionEndPTS = .invalid
-
-    Log.info(
-      "ReplayWriter: audio PTS offset raw/applied (ms):",
-      rawOffsetSeconds * 1000,
-      "/",
-      appliedOffsetSeconds * 1000,
-      "samples a/v:",
-      startupAudioPTSSeconds.count,
-      "/",
-      startupVideoPTSSeconds.count
-    )
-  }
-
-  private func median(_ values: [Double]) -> Double? {
-    guard !values.isEmpty else { return nil }
-    let sorted = values.sorted()
-    let middle = sorted.count / 2
-    if sorted.count.isMultiple(of: 2) {
-      return (sorted[middle - 1] + sorted[middle]) / 2
-    }
-    return sorted[middle]
   }
 
   // - Queue Helpers ---
