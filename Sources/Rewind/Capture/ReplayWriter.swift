@@ -11,7 +11,7 @@ final class ReplayWriter: @unchecked Sendable {
     static let maxPendingAudioSamples = 240
     static let maxPendingVideoSamples = 120
     static let audioJitterTolerance = CMTime(seconds: 0.005, preferredTimescale: 1_000)
-    static let maxAudioPTSAdjustment = CMTime(seconds: 0.15, preferredTimescale: 600)
+    static let maxAudioPTSAdjustment = CMTime(seconds: 0.25, preferredTimescale: 600)
     static let audioBufferingWindow = CMTime(seconds: 0.20, preferredTimescale: 600)
     static let audioSyncTolerance = CMTime(seconds: 0.02, preferredTimescale: 48_000)
     static let videoSyncTolerance = CMTime(seconds: 0.02, preferredTimescale: 600)
@@ -941,17 +941,31 @@ final class ReplayWriter: @unchecked Sendable {
     sessionStarted = true
     audioBufferingEndPTS = CMTimeAdd(referencePTS, Constants.audioBufferingWindow)
 
-    if firstAudioPTS.isValid, firstVideoPTS.isValid {
-      let offset = CMTimeSubtract(firstAudioPTS, firstVideoPTS)
-      let adjustedOffset = CMTimeMaximum(offset, .zero)
-      if adjustedOffset <= Constants.maxAudioPTSAdjustment {
-        audioPTSOffset = adjustedOffset
-        audioPTSOffsetValid = true
-      } else {
-        audioPTSOffset = .zero
-        audioPTSOffsetValid = true
+    if firstVideoPTS.isValid {
+      var firstRetainedAudioPTS = firstAudioPTS
+      let minCandidatePTS = CMTimeSubtract(referencePTS, Constants.audioSyncTolerance)
+      for sample in pendingAudioSamples {
+        let pts = CMSampleBufferGetPresentationTimeStamp(sample)
+        if pts >= minCandidatePTS {
+          firstRetainedAudioPTS = pts
+          break
+        }
       }
-      Log.info("ReplayWriter: audio PTS offset (audio follows video):", audioPTSOffset.seconds * 1000, "ms")
+
+      let rawOffset = firstRetainedAudioPTS.isValid
+        ? CMTimeSubtract(firstRetainedAudioPTS, firstVideoPTS)
+        : .zero
+      let maxAdjustmentSeconds = Constants.maxAudioPTSAdjustment.seconds
+      let clampedSeconds = max(-maxAdjustmentSeconds, min(rawOffset.seconds, maxAdjustmentSeconds))
+      audioPTSOffset = CMTime(seconds: clampedSeconds, preferredTimescale: 600)
+      audioPTSOffsetValid = true
+      Log.info(
+        "ReplayWriter: audio PTS offset raw/applied:",
+        rawOffset.seconds * 1000,
+        "/",
+        audioPTSOffset.seconds * 1000,
+        "ms"
+      )
     }
 
     flushPendingVideoSamples(writer: writer, videoInput: videoInput)
