@@ -3,12 +3,12 @@
     <channel>
         <title>Rewind</title>
         <item>
-            <title>0.4.2</title>
-            <pubDate>Sat, 20 Jun 2026 11:08:58 +0000</pubDate>
-            <sparkle:version>0.4.2</sparkle:version>
-            <sparkle:shortVersionString>0.4.2</sparkle:shortVersionString>
+            <title>0.4.3</title>
+            <pubDate>Sat, 20 Jun 2026 13:47:07 +0000</pubDate>
+            <sparkle:version>0.4.3</sparkle:version>
+            <sparkle:shortVersionString>0.4.3</sparkle:shortVersionString>
             <sparkle:minimumSystemVersion>13.0</sparkle:minimumSystemVersion>
-            <enclosure url="https://github.com/l1zov/rewind/releases/download/v0.4.2/Rewind-v0.4.2.dmg" length="2592764" type="application/octet-stream" sparkle:edSignature="Kg5gAj1pcItdLjRC2Rx3nWeizkyUqb3QGzFPakwyPLpDx8HNrY2X4Vd+VS3tiSLJ0d6fBt6nZzwgcfj6XCCnCA=="/>
+            <enclosure url="https://github.com/l1zov/rewind/releases/download/v0.4.3/Rewind-v0.4.3.dmg" length="2592636" type="application/octet-stream" sparkle:edSignature="fUm7vT5dLRxdzfuBTrRDkeSmtlndpNDMTOQcce4016ia0s4woW6IyMotXAMIlqAx6Yimd46CjEz6Zo+fWNrKCg=="/>
         </item>
     </channel>
 </rss>
