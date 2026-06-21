@@ -20,7 +20,7 @@ Rewind is a free, open-source macOS app for instantly clipping highlights of you
 
 1. Go to the [Releases page](https://github.com/l1zov/rewind/releases) and download the `.dmg` from the latest release
 2. Open it and drag **Rewind** into your Applications folder
-3. Launch Rewind from Applications
+3. Launch Rewind from Applications ( if it does not open run ``` xattr -cr /Applications/Rewind.app``` )
 
 **Note:** The first time you open Rewind, macOS may block it since it's not yet signed with an Apple certificate. Go to **System Settings -> Privacy & Security**, scroll down and click **Open Anyway**. Read more about this [here](https://disable-gatekeeper.github.io/).
 
