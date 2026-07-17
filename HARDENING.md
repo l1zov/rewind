@@ -11,7 +11,33 @@ setup needed to produce **signed, notarized** release builds.
 
 ---
 
-## 1. What happens automatically (no setup required)
+## Do you need a paid Apple Developer account?
+
+**No — not for any of the hardening.** Only the *optional* notarization step
+(section 2) needs one, and that's an Apple restriction, not something this
+project can work around.
+
+| Feature | Paid Apple account? |
+|---------|---------------------|
+| Reflection/symbol stripping, dead-strip, string obfuscation | **No** (free) |
+| Anti-debug guard | **No** (free) |
+| Ad-hoc signed DMG (current default) | **No** (free) |
+| Notarization (removes the Gatekeeper warning) | **Yes** — $99/yr Apple Developer Program |
+
+A plain `./scripts/build-package.sh 1.2.3` with **no** environment variables set
+gives you the full hardening on a free, ad-hoc-signed DMG — exactly how the
+project already shipped. The only downside of skipping notarization is that
+users hit macOS's "unidentified developer" prompt and open the app via
+**right-click → Open** (already documented in the README).
+
+Notarization can't be made free: Apple's notary service only accepts uploads
+from a paid membership holding a *Developer ID Application* certificate, which
+free Apple IDs cannot obtain. No signing trick, self-signed certificate, or
+script change changes that.
+
+---
+
+## 1. What happens automatically (no setup required, no account)
 
 These are baked into `Package.swift` and `scripts/build-package.sh` and apply to
 every `swift build -c release` / packaged build:
@@ -34,11 +60,12 @@ only renaming the types in source would, which is fragile and not worth it.
 
 ---
 
-## 2. Developer ID signing + notarization (recommended for releases)
+## 2. Developer ID signing + notarization (optional — needs a paid account)
 
-This is the highest-value step: it lets macOS Gatekeeper trust the app and
-removes the "unidentified developer" wall, and it protects users from tampered
-redistributions.
+Skip this entire section if you don't have a paid Apple Developer account; the
+build works fine without it (see above). If you do, this is the highest-value
+step: it lets macOS Gatekeeper trust the app, removes the "unidentified
+developer" wall, and protects users from tampered redistributions.
 
 ### Prerequisites
 1. A paid **Apple Developer Program** membership.
