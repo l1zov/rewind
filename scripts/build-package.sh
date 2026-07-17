@@ -5,6 +5,23 @@ set -euo pipefail
 APP_NAME="Rewind"
 BUNDLE_ID="com.rewind.app"
 
+# Signing / notarization configuration (all optional).
+#
+# SIGNING_IDENTITY: a "Developer ID Application" identity produces a
+#   distributable, notarizable build. Leave unset for a local ad-hoc build
+#   (the previous default behaviour). Example:
+#     export SIGNING_IDENTITY="Developer ID Application: Your Name (TEAMID)"
+#
+# NOTARY_PROFILE: a notarytool keychain profile name. When set (and a real
+#   identity is used), the app and DMG are uploaded to Apple, notarized and
+#   stapled. Create the profile once with:
+#     xcrun notarytool store-credentials "RewindNotary" \
+#       --apple-id "you@example.com" --team-id "TEAMID" \
+#       --password "app-specific-password"
+#   then: export NOTARY_PROFILE="RewindNotary"
+SIGNING_IDENTITY="${SIGNING_IDENTITY:--}"
+NOTARY_PROFILE="${NOTARY_PROFILE:-}"
+
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 DIST_DIR="${PROJECT_ROOT}/dist"
@@ -88,24 +105,90 @@ remove_path() {
   return 0
 }
 
-adhoc_sign() {
+# Sign a single item. With a real Developer ID identity this applies the
+# hardened runtime + a secure timestamp (both required for notarization); with
+# the ad-hoc identity ("-") it matches the previous local-build behaviour.
+#   sign_path <path> <label> [entitlements] [harden=yes|no]
+sign_path() {
   local target_path="$1"
   local label="$2"
   local entitlements="${3:-}"
+  local harden="${4:-yes}"
 
   if ! command -v codesign >/dev/null 2>&1; then
     echo "codesign is required to sign ${label}" >&2
     return 1
   fi
 
-  local opts=("--force" "--deep" "--sign" "-" "--timestamp=none")
+  local opts=("--force" "--sign" "${SIGNING_IDENTITY}")
+  if [[ "${SIGNING_IDENTITY}" == "-" ]]; then
+    opts+=("--timestamp=none")
+  else
+    opts+=("--timestamp")
+    if [[ "${harden}" == "yes" ]]; then
+      opts+=("--options" "runtime")
+    fi
+  fi
   if [[ -n "${entitlements}" ]]; then
-    opts+=("--entitlements" "${entitlements}" "--options" "runtime")
+    opts+=("--entitlements" "${entitlements}")
   fi
 
-  echo "Adhoc signing ${label}..."
+  echo "Signing ${label} (identity: ${SIGNING_IDENTITY})..."
   codesign "${opts[@]}" "${target_path}"
-  codesign --verify --deep --strict --verbose=2 "${target_path}"
+}
+
+# Sign the Sparkle framework inside-out: nested helpers must be signed before
+# the framework that contains them, or notarization rejects the build.
+sign_sparkle() {
+  local framework="$1"
+  local versioned="${framework}/Versions/B"
+
+  if [[ -d "${versioned}/XPCServices" ]]; then
+    shopt -s nullglob
+    for xpc in "${versioned}/XPCServices/"*.xpc; do
+      sign_path "${xpc}" "Sparkle $(basename "${xpc}")"
+    done
+    shopt -u nullglob
+  fi
+  if [[ -d "${versioned}/Updater.app" ]]; then
+    sign_path "${versioned}/Updater.app" "Sparkle Updater.app"
+  fi
+  if [[ -e "${versioned}/Autoupdate" ]]; then
+    sign_path "${versioned}/Autoupdate" "Sparkle Autoupdate"
+  fi
+  sign_path "${framework}" "Sparkle framework"
+}
+
+# Upload to Apple's notary service and staple the ticket. No-op unless a notary
+# profile is configured. notarytool accepts .zip/.dmg/.pkg, so a bare .app is
+# zipped first; the ticket is then stapled onto the original .app.
+notarize_and_staple() {
+  local target_path="$1"
+  local label="$2"
+
+  if [[ -z "${NOTARY_PROFILE}" ]]; then
+    return 0
+  fi
+  if [[ "${SIGNING_IDENTITY}" == "-" ]]; then
+    echo "Skipping notarization of ${label}: NOTARY_PROFILE is set but SIGNING_IDENTITY is ad-hoc." >&2
+    return 0
+  fi
+  if ! command -v xcrun >/dev/null 2>&1; then
+    echo "xcrun is required to notarize ${label}" >&2
+    return 1
+  fi
+
+  local submit_path="${target_path}"
+  if [[ "${target_path}" == *.app ]]; then
+    submit_path="${STAGING_ROOT}/$(basename "${target_path}").zip"
+    echo "Zipping ${label} for notarization..."
+    ditto -c -k --keepParent "${target_path}" "${submit_path}"
+  fi
+
+  echo "Notarizing ${label} (uploads to Apple and waits for the result)..."
+  xcrun notarytool submit "${submit_path}" --keychain-profile "${NOTARY_PROFILE}" --wait
+  echo "Stapling notarization ticket to ${label}..."
+  xcrun stapler staple "${target_path}"
 }
 
 mkdir -p "${DIST_DIR}"
@@ -132,6 +215,12 @@ echo "Creating app bundle..."
 mkdir -p "${MACOS_DIR}" "${RESOURCES_DIR}" "${FRAMEWORKS_DIR}"
 
 cp "${EXECUTABLE_PATH}" "${MACOS_DIR}/${APP_NAME}"
+
+# Strip local symbols so the shipped binary doesn't leak internal function,
+# type and property names via its symbol table. Must run before code signing.
+# -x removes non-global symbols while keeping the binary valid and signable.
+echo "Stripping symbols from ${APP_NAME}..."
+strip -x "${MACOS_DIR}/${APP_NAME}"
 
 ICON_FILE=""
 if [[ -f "${PROJECT_ROOT}/Resources/AppIcon.icns" ]]; then
@@ -185,7 +274,7 @@ fi
 SPARKLE_FRAMEWORK_SRC="${PROJECT_ROOT}/.build/artifacts/sparkle/Sparkle/Sparkle.xcframework/macos-arm64_x86_64/Sparkle.framework"
 if [[ -d "${SPARKLE_FRAMEWORK_SRC}" ]]; then
   ditto "${SPARKLE_FRAMEWORK_SRC}" "${FRAMEWORKS_DIR}/Sparkle.framework"
-  adhoc_sign "${FRAMEWORKS_DIR}/Sparkle.framework" "Sparkle framework"
+  sign_sparkle "${FRAMEWORKS_DIR}/Sparkle.framework"
 else
   echo "Warning: Sparkle.framework not found in .build/artifacts" >&2
 fi
@@ -201,7 +290,13 @@ cat > "${STAGING_ROOT}/Rewind.entitlements" <<EOF
 </plist>
 EOF
 
-adhoc_sign "${APP_BUNDLE}" "app bundle" "${STAGING_ROOT}/Rewind.entitlements"
+# Sign the app last (inside-out): its nested Sparkle framework is already signed.
+sign_path "${APP_BUNDLE}" "app bundle" "${STAGING_ROOT}/Rewind.entitlements"
+codesign --verify --deep --strict --verbose=2 "${APP_BUNDLE}"
+
+# Notarize + staple the app before packaging so the extracted .app validates
+# offline. No-op for ad-hoc builds.
+notarize_and_staple "${APP_BUNDLE}" "app bundle"
 
 echo "Creating drag-and-drop DMG..."
 remove_path "${DMG_PATH}" "disk image" || exit 1
@@ -210,7 +305,15 @@ mkdir -p "${DMG_STAGING_DIR}"
 ditto "${APP_BUNDLE}" "${DMG_STAGING_DIR}/${APP_NAME}.app"
 ln -s /Applications "${DMG_STAGING_DIR}/Applications"
 hdiutil create -volname "${APP_NAME}" -srcfolder "${DMG_STAGING_DIR}" -ov -format UDZO "${DMG_PATH}" >/dev/null
-adhoc_sign "${DMG_PATH}" "disk image"
+# A disk image carries no runtime, so sign it without the hardened-runtime flag.
+sign_path "${DMG_PATH}" "disk image" "" "no"
+notarize_and_staple "${DMG_PATH}" "disk image"
+
+if [[ "${SIGNING_IDENTITY}" != "-" && -n "${NOTARY_PROFILE}" ]]; then
+  echo "Verifying Gatekeeper acceptance..."
+  spctl --assess --type open --context context:primary-signature --verbose=2 "${DMG_PATH}" || \
+    echo "Warning: spctl assessment did not pass; check signing/notarization output above." >&2
+fi
 
 echo "Publishing app bundle to dist..."
 APP_BUNDLE_PUBLISHED="false"

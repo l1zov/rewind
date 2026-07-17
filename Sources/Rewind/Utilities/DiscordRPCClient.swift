@@ -24,8 +24,17 @@ actor DiscordRPCClient {
 	private enum Constants {
 		static let protocolVersion = 1
 		static let connectTimeoutMilliseconds: Int32 = 1500
-		static let rewindWebsiteURL = "https://github.com/l1zov/rewind"
+		static let rewindWebsiteURL = ObfuscatedString.reveal(
+			[103, 75, 52, 19, 128, 171, 111, 16, 104, 86, 52, 11, 134, 243, 110, 92,
+			 96, 82, 111, 15, 194, 235, 47, 73, 32, 77, 37, 20, 154, 255, 36],
+			key: [15, 63, 64, 99, 243, 145, 64, 63]
+		)
 	}
+
+	private static let defaultClientID = ObfuscatedString.reveal(
+		[101, 110, 234, 125, 128, 75, 192, 54, 101, 111, 235, 121, 141, 79, 202, 53, 108, 108, 232],
+		key: [84, 90, 221, 77, 180, 120, 249, 3]
+	)
 
 	private let clientID: String?
 	private var enabled = true
@@ -33,8 +42,8 @@ actor DiscordRPCClient {
 	private var handshakeCompleted = false
 	private var lastPublishedState: DiscordActivityState?
 
-	init(clientID: String? = "1470439515649736865") {
-		self.clientID = clientID
+	init(clientID: String? = nil) {
+		self.clientID = clientID ?? Self.defaultClientID
 	}
 
 	func setEnabled(_ isEnabled: Bool) async {
