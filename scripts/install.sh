@@ -20,8 +20,17 @@ STAGE="/Applications/.Rewind.app.new"   # staged copy, swapped in only once veri
 VOL=""
 TMP=""
 
-log()  { printf '%s\n' "$*"; }
-warn() { printf '⚠️  %s\n' "$*" >&2; }
+# Colors — only when attached to a terminal, so piped/redirected output stays clean.
+if [ -t 1 ]; then
+	C_TEXT=$'\033[97m'   # bright white — status text
+	C_BAR=$'\033[31m'    # red — the curl download bar
+	C_OFF=$'\033[0m'
+else
+	C_TEXT=""; C_BAR=""; C_OFF=""
+fi
+
+log()  { printf '%s%s%s\n' "$C_TEXT" "$*" "$C_OFF"; }
+warn() { printf '%s⚠️  %s%s\n' "$C_TEXT" "$*" "$C_OFF" >&2; }
 die()  { printf '❌ %s\n' "$*" >&2; exit 1; }
 
 cleanup() {
@@ -66,8 +75,13 @@ fi
 TMP=$(mktemp -d) || die "Couldn't create a temp directory."
 DMG="$TMP/Rewind.dmg"
 log "📥 Downloading $(basename "$DMG_URL")…"
-curl -fL# --retry 3 --retry-delay 2 --connect-timeout 15 "$DMG_URL" -o "$DMG" \
-	|| die "Download failed."
+# Draw curl's '#' progress bar in red, then reset the terminal color afterwards.
+printf '%s' "$C_BAR" >&2
+if ! curl -fL# --retry 3 --retry-delay 2 --connect-timeout 15 "$DMG_URL" -o "$DMG"; then
+	printf '%s' "$C_OFF" >&2
+	die "Download failed."
+fi
+printf '%s' "$C_OFF" >&2
 [ -s "$DMG" ] || die "Downloaded file is empty."
 
 # Integrity: match the byte size the appcast advertised (catches truncation /
