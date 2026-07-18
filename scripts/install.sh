@@ -24,17 +24,36 @@ TMP=""
 if [ -t 1 ]; then
 	BOLD=$'\033[1m'; DIM=$'\033[2m'; OFF=$'\033[0m'
 	RED=$'\033[91m'; WHITE=$'\033[97m'; GREEN=$'\033[92m'; YELLOW=$'\033[93m'
-	C_BAR=$'\033[91m'   # red — the curl download bar
+	BG_RED=$'\033[101m'   # bright-red background — the logo field
+	C_BAR=$'\033[91m'     # red — the curl download bar
 else
-	BOLD=""; DIM=""; OFF=""; RED=""; WHITE=""; GREEN=""; YELLOW=""; C_BAR=""
+	BOLD=""; DIM=""; OFF=""; RED=""; WHITE=""; GREEN=""; YELLOW=""; BG_RED=""; C_BAR=""
 fi
 
-RULE="━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+# ANSI rendering of the app icon: a white rewind/skip-back glyph on a red field.
+LOGO=(
+"                    "
+"    ██       ██     "
+"    ██     ████     "
+"    ██   ██████     "
+"    ██ ████████     "
+"    ██   ██████     "
+"    ██     ████     "
+"    ██       ██     "
+"                    "
+)
 
 banner() {
-	printf '\n%s%s%s\n' "$RED" "$RULE" "$OFF"
-	printf '   %s⏪  R E W I N D%s   %sinstaller%s\n' "$BOLD$WHITE" "$OFF" "$DIM" "$OFF"
-	printf '%s%s%s\n\n' "$RED" "$RULE" "$OFF"
+	if [ -t 1 ]; then
+		printf '\n'
+		local row
+		for row in "${LOGO[@]}"; do
+			printf '   %s%s%s%s\n' "$BG_RED" "$WHITE" "$row" "$OFF"
+		done
+		printf '\n     %sREWIND%s %sinstaller%s\n\n' "$BOLD$RED" "$OFF" "$DIM" "$OFF"
+	else
+		printf '\nRewind installer\n\n'
+	fi
 }
 step() { printf '  %s➜%s  %s%s%s\n' "$BOLD$RED" "$OFF" "$WHITE" "$*" "$OFF"; }
 ok()   { printf '\n  %s✔%s  %s%s%s\n\n' "$BOLD$GREEN" "$OFF" "$BOLD$WHITE" "$*" "$OFF"; }
