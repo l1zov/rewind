@@ -30,27 +30,40 @@ else
 	BOLD=""; DIM=""; OFF=""; RED=""; WHITE=""; GREEN=""; YELLOW=""; BG_RED=""; C_BAR=""
 fi
 
-# ANSI rendering of the app icon: a white rewind/skip-back glyph on a red field.
+# ASCII-art app icon: a white rewind/skip-back glyph (@) on a red field.
 LOGO=(
 "                    "
-"    ██       ██     "
-"    ██     ████     "
-"    ██   ██████     "
-"    ██ ████████     "
-"    ██   ██████     "
-"    ██     ████     "
-"    ██       ██     "
+"    @@       @@     "
+"    @@     @@@@     "
+"    @@   @@@@@@     "
+"    @@ @@@@@@@@     "
+"    @@   @@@@@@     "
+"    @@     @@@@     "
+"    @@       @@     "
 "                    "
+)
+
+# Figlet-style wordmark (fixed-width letters, single-space kerning).
+WORDMARK=(
+"#### #### #   # ### #   # ### "
+"#  # #    #   #  #  ##  # #  #"
+"#### ###  # # #  #  # # # #  #"
+"# #  #    ## ##  #  #  ## #  #"
+"#  # #### #   # ### #   # ### "
 )
 
 banner() {
 	if [ -t 1 ]; then
-		printf '\n'
 		local row
+		printf '\n'
 		for row in "${LOGO[@]}"; do
 			printf '   %s%s%s%s\n' "$BG_RED" "$WHITE" "$row" "$OFF"
 		done
-		printf '\n     %sREWIND%s %sinstaller%s\n\n' "$BOLD$RED" "$OFF" "$DIM" "$OFF"
+		printf '\n'
+		for row in "${WORDMARK[@]}"; do
+			printf '  %s%s%s%s\n' "$BOLD" "$RED" "$row" "$OFF"
+		done
+		printf '\n   %s· · ·  instant-replay installer  · · ·%s\n\n' "$DIM" "$OFF"
 	else
 		printf '\nRewind installer\n\n'
 	fi
