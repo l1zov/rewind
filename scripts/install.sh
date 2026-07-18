@@ -20,18 +20,26 @@ STAGE="/Applications/.Rewind.app.new"   # staged copy, swapped in only once veri
 VOL=""
 TMP=""
 
-# Colors — only when attached to a terminal, so piped/redirected output stays clean.
+# Styling — rich output on a terminal, plain text when piped/redirected.
 if [ -t 1 ]; then
-	C_TEXT=$'\033[97m'   # bright white — status text
-	C_BAR=$'\033[31m'    # red — the curl download bar
-	C_OFF=$'\033[0m'
+	BOLD=$'\033[1m'; DIM=$'\033[2m'; OFF=$'\033[0m'
+	RED=$'\033[91m'; WHITE=$'\033[97m'; GREEN=$'\033[92m'; YELLOW=$'\033[93m'
+	C_BAR=$'\033[91m'   # red — the curl download bar
 else
-	C_TEXT=""; C_BAR=""; C_OFF=""
+	BOLD=""; DIM=""; OFF=""; RED=""; WHITE=""; GREEN=""; YELLOW=""; C_BAR=""
 fi
 
-log()  { printf '%s%s%s\n' "$C_TEXT" "$*" "$C_OFF"; }
-warn() { printf '%s⚠️  %s%s\n' "$C_TEXT" "$*" "$C_OFF" >&2; }
-die()  { printf '❌ %s\n' "$*" >&2; exit 1; }
+RULE="━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+
+banner() {
+	printf '\n%s%s%s\n' "$RED" "$RULE" "$OFF"
+	printf '   %s⏪  R E W I N D%s   %sinstaller%s\n' "$BOLD$WHITE" "$OFF" "$DIM" "$OFF"
+	printf '%s%s%s\n\n' "$RED" "$RULE" "$OFF"
+}
+step() { printf '  %s➜%s  %s%s%s\n' "$BOLD$RED" "$OFF" "$WHITE" "$*" "$OFF"; }
+ok()   { printf '\n  %s✔%s  %s%s%s\n\n' "$BOLD$GREEN" "$OFF" "$BOLD$WHITE" "$*" "$OFF"; }
+warn() { printf '  %s!%s  %s%s%s\n' "$BOLD$YELLOW" "$OFF" "$WHITE" "$*" "$OFF" >&2; }
+die()  { printf '\n  %s✖%s  %s%s%s\n\n' "$BOLD$RED" "$OFF" "$WHITE" "$*" "$OFF" >&2; exit 1; }
 
 cleanup() {
 	[ -n "$VOL" ] && diskutil eject "$VOL" >/dev/null 2>&1 || true
@@ -47,8 +55,10 @@ command -v curl >/dev/null     || die "curl is required."
 command -v ditto >/dev/null    || die "ditto is required."
 [ -w /Applications ]           || die "/Applications isn't writable. Re-run with: sudo bash \"$0\""
 
+banner
+
 # --- find the latest release -------------------------------------------------
-log "🔎 Checking for the latest Rewind release…"
+step "Checking for the latest release…"
 FEED=$(curl -fsSL --retry 3 --retry-delay 2 --connect-timeout 15 "$APPCAST") \
 	|| die "Couldn't reach the update feed ($APPCAST)."
 
@@ -63,25 +73,25 @@ EXPECT_SIZE=$(printf '%s' "$FEED" | grep -oE 'length="[0-9]+"' | head -1 | grep 
 if [ -d "$APP" ]; then
 	CURRENT=$(defaults read "$APP/Contents/Info" CFBundleShortVersionString 2>/dev/null || echo "")
 	if [ -n "$CURRENT" ] && [ "$CURRENT" = "$LATEST" ]; then
-		log "✅ Rewind $CURRENT is already the latest version. Nothing to do."
+		ok "Rewind $CURRENT is already up to date."
 		exit 0
 	fi
-	[ -n "$CURRENT" ] && log "⬆️  Updating Rewind ${CURRENT} → ${LATEST}" || log "⬇️  Installing Rewind ${LATEST}"
+	[ -n "$CURRENT" ] && step "Updating Rewind ${CURRENT} → ${LATEST}" || step "Installing Rewind ${LATEST}"
 else
-	log "⬇️  Installing Rewind ${LATEST:-latest}"
+	step "Installing Rewind ${LATEST:-latest}"
 fi
 
 # --- download ----------------------------------------------------------------
 TMP=$(mktemp -d) || die "Couldn't create a temp directory."
 DMG="$TMP/Rewind.dmg"
-log "📥 Downloading $(basename "$DMG_URL")…"
+step "Downloading $(basename "$DMG_URL")…"
 # Draw curl's '#' progress bar in red, then reset the terminal color afterwards.
 printf '%s' "$C_BAR" >&2
 if ! curl -fL# --retry 3 --retry-delay 2 --connect-timeout 15 "$DMG_URL" -o "$DMG"; then
-	printf '%s' "$C_OFF" >&2
+	printf '%s' "$OFF" >&2
 	die "Download failed."
 fi
-printf '%s' "$C_OFF" >&2
+printf '%s' "$OFF" >&2
 [ -s "$DMG" ] || die "Downloaded file is empty."
 
 # Integrity: match the byte size the appcast advertised (catches truncation /
@@ -93,7 +103,7 @@ if [ -n "$EXPECT_SIZE" ]; then
 fi
 
 # --- install: stage a verified copy, then swap it in -------------------------
-log "📦 Installing…"
+step "Installing…"
 VOL=$(diskutil image attach --nobrowse --readOnly "$DMG" 2>/dev/null | grep -o '/Volumes/.*' | tail -1) || true
 [ -n "$VOL" ] && [ -d "$VOL/Rewind.app" ] || die "Rewind.app not found inside the disk image."
 
@@ -122,4 +132,4 @@ chmod -R +x "$APP" 2>/dev/null || true
 FINAL_VER=$(defaults read "$APP/Contents/Info" CFBundleShortVersionString 2>/dev/null || echo "?")
 codesign --verify --strict "$APP" 2>/dev/null || warn "Code-signature check didn't pass — the app may still run, but the download couldn't be validated."
 
-log "✅ Rewind ${FINAL_VER} installed and verified! Open it from your Applications folder."
+ok "Rewind ${FINAL_VER} installed! Open it from your Applications folder."
