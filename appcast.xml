@@ -2,7 +2,14 @@
 <rss xmlns:sparkle="http://www.andymatuschak.org/xml-namespaces/sparkle" version="2.0">
     <channel>
         <title>Rewind</title>
-
+        <item>
+            <title>1.0.0</title>
+            <pubDate>Sun, 16 Aug 2026 13:59:19 +0000</pubDate>
+            <sparkle:version>1.0.0</sparkle:version>
+            <sparkle:shortVersionString>1.0.0</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
+            <enclosure url="https://github.com/l1zov/rewind/releases/download/v1.0.0/Rewind-v1.0.0.dmg" length="3986678" type="application/octet-stream" sparkle:edSignature="pVD7k2Yni61mpFKfyy8wfXZgdX5c6rR4aawmrL6THc1MrNI4wzCJh9GACaj5478Al422LCE7awgdOXEGLwxLCQ=="/>
+        </item>
         <item>
             <title>0.4.11</title>
             <pubDate>Sun, 28 Jun 2026 14:14:20 +0000</pubDate>
