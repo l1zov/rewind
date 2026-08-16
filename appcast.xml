@@ -8,7 +8,7 @@
             <sparkle:version>1.0.0</sparkle:version>
             <sparkle:shortVersionString>1.0.0</sparkle:shortVersionString>
             <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
-            <enclosure url="https://github.com/l1zov/rewind/releases/download/v1.0.0/Rewind-v1.0.0.dmg" length="3986678" type="application/octet-stream" sparkle:edSignature="pVD7k2Yni61mpFKfyy8wfXZgdX5c6rR4aawmrL6THc1MrNI4wzCJh9GACaj5478Al422LCE7awgdOXEGLwxLCQ=="/>
+            <enclosure url="https://github.com/l1zov/rewind/releases/download/v1.0.0/Rewind-v1.0.0.dmg" length="3986663" type="application/octet-stream" sparkle:edSignature="HWkhHYAxyHifuE01LgBxUDHv+AQJWO3wr01+YO1w64EQpvv2VO11PCLI7PPLE86/iVtMnBXLx/YzAkwV9QMECg=="/>
         </item>
         <item>
             <title>0.4.11</title>
