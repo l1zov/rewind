@@ -98,6 +98,40 @@ final class ClipLibraryTests: XCTestCase {
 		XCTAssertEqual(deleted, [missingClip.id])
 	}
 
+	func testInitDoesNotPruneClipsWhoseFolderIsUnreachable() async throws {
+		let presentURL = try makeClipFileInMovies()
+		defer { try? FileManager.default.removeItem(at: presentURL) }
+		let presentClip = Clip(url: presentURL, duration: 10)
+		// An unmounted external drive: the whole parent folder is gone, not just the file.
+		let offlineClip = Clip(
+			url: URL(fileURLWithPath: "/Volumes/RewindTestOffline-\(UUID().uuidString)/clip.mov"), duration: 8)
+		let store = TestClipStore(fetchResult: .success([presentClip, offlineClip]))
+
+		let library = ClipLibrary(store: store)
+		await waitForLoadCompletion(library)
+
+		XCTAssertEqual(library.clips.map(\.id), [presentClip.id])
+		let deleted = await store.deletedIDs()
+		XCTAssertTrue(deleted.isEmpty, "Metadata for an unreachable folder must be kept for when it returns")
+	}
+
+	func testInitPrunesClipsWhoseFolderWasDeletedOnAMountedVolume() async throws {
+		let presentURL = try makeClipFileInMovies()
+		defer { try? FileManager.default.removeItem(at: presentURL) }
+		let presentClip = Clip(url: presentURL, duration: 10)
+		// The user deleted the old clips folder; the volume it was on is still there.
+		let orphan = Clip(
+			url: URL(fileURLWithPath: "/tmp/RewindDeletedFolder-\(UUID().uuidString)/clip.mov"), duration: 8)
+		let store = TestClipStore(fetchResult: .success([presentClip, orphan]))
+
+		let library = ClipLibrary(store: store)
+		await waitForLoadCompletion(library)
+
+		XCTAssertEqual(library.clips.map(\.id), [presentClip.id])
+		let deleted = await store.deletedIDs()
+		XCTAssertEqual(deleted, [orphan.id], "Rows for a deleted folder on a mounted volume must not linger forever")
+	}
+
 	func testInitSetsLoadErrorWhenFetchFails() async {
 		let store = TestClipStore(fetchResult: .failure(ClipLibraryTestError.fetchFailed))
 

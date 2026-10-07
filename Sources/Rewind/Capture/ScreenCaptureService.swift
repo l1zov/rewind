@@ -42,6 +42,7 @@ final class ScreenCaptureService: NSObject, SCStreamOutput, @unchecked Sendable 
 	private(set) var displaySize: CGSize?
 
 	private var stream: SCStream?
+	private var isStarting = false
 	private let stopObserver = RewindStreamStopObserver()
 	private let videoQueue: DispatchQueue
 	private let audioQueue: DispatchQueue
@@ -85,7 +86,11 @@ final class ScreenCaptureService: NSObject, SCStreamOutput, @unchecked Sendable 
 		recordDesktopAudio: Bool = true,
 		microphoneDeviceID: String? = nil
 	) async throws {
-		guard stream == nil else { return }
+		// `stream` is only assigned after `startCapture()` suspends, so a second
+		// concurrent start would otherwise build a second stream and orphan the first.
+		guard stream == nil, !isStarting else { return }
+		isStarting = true
+		defer { isStarting = false }
 
 		// When the user picked a display/window/app via SCContentSharingPicker we
 		// capture exactly that; otherwise fall back to the primary display.

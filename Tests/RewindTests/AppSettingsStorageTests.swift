@@ -118,7 +118,7 @@ final class AppSettingsStorageTests: XCTestCase {
 		XCTAssertEqual(loaded.outputDirectoryPath, expected.outputDirectoryPath)
 	}
 
-	func testLoadClearsStoredValuesAndReturnsDefaultWhenStoredSettingsAreInvalid() throws {
+	func testLoadReplacesEveryInvalidFieldWithItsDefault() throws {
 		let invalid = AppSettings(
 			replayDuration: 500,
 			resolutionID: "jldsjkjdhsk",
@@ -160,32 +160,19 @@ final class AppSettingsStorageTests: XCTestCase {
 
 		let loaded = AppSettingsStorage.load()
 
-		XCTAssertNil(UserDefaults.standard.object(forKey: storageKey))
 		XCTAssertEqual(loaded.replayDuration, AppSettings.default.replayDuration)
-		XCTAssertEqual(loaded.resolutionID, AppSettings.default.resolutionID)
 		XCTAssertEqual(loaded.qualityID, AppSettings.default.qualityID)
 		XCTAssertEqual(loaded.frameRate, AppSettings.default.frameRate)
 		XCTAssertEqual(loaded.containerID, AppSettings.default.containerID)
 		XCTAssertEqual(loaded.audioCodecID, AppSettings.default.audioCodecID)
-		XCTAssertEqual(loaded.hotkey, AppSettings.default.hotkey)
-		XCTAssertEqual(loaded.startRecordingHotkey, AppSettings.default.startRecordingHotkey)
-		XCTAssertEqual(loaded.alwaysRecordEnabled, AppSettings.default.alwaysRecordEnabled)
-		XCTAssertEqual(loaded.saveFeedbackEnabled, AppSettings.default.saveFeedbackEnabled)
 		XCTAssertEqual(loaded.saveFeedbackVolume, AppSettings.default.saveFeedbackVolume)
 		XCTAssertEqual(loaded.saveFeedbackSoundID, AppSettings.default.saveFeedbackSoundID)
-		XCTAssertEqual(loaded.recordingStartFeedbackEnabled, AppSettings.default.recordingStartFeedbackEnabled)
 		XCTAssertEqual(loaded.recordingStartFeedbackVolume, AppSettings.default.recordingStartFeedbackVolume)
 		XCTAssertEqual(loaded.recordingStartFeedbackSoundID, AppSettings.default.recordingStartFeedbackSoundID)
-		XCTAssertEqual(loaded.recordingEndFeedbackEnabled, AppSettings.default.recordingEndFeedbackEnabled)
 		XCTAssertEqual(loaded.recordingEndFeedbackVolume, AppSettings.default.recordingEndFeedbackVolume)
 		XCTAssertEqual(loaded.recordingEndFeedbackSoundID, AppSettings.default.recordingEndFeedbackSoundID)
-		XCTAssertEqual(loaded.errorFeedbackEnabled, AppSettings.default.errorFeedbackEnabled)
 		XCTAssertEqual(loaded.errorFeedbackVolume, AppSettings.default.errorFeedbackVolume)
 		XCTAssertEqual(loaded.errorFeedbackSoundID, AppSettings.default.errorFeedbackSoundID)
-		XCTAssertEqual(loaded.discordRPCEnabled, AppSettings.default.discordRPCEnabled)
-		XCTAssertEqual(loaded.fileLoggingEnabled, AppSettings.default.fileLoggingEnabled)
-		XCTAssertEqual(loaded.analyticsEnabled, AppSettings.default.analyticsEnabled)
-		XCTAssertEqual(loaded.recordMicrophoneEnabled, AppSettings.default.recordMicrophoneEnabled)
 	}
 
 	func testLoadFallsBackToDefaultWhenStoredBlobIsInvalid() {
@@ -220,7 +207,7 @@ final class AppSettingsStorageTests: XCTestCase {
 		XCTAssertEqual(loaded.recordMicrophoneEnabled, AppSettings.default.recordMicrophoneEnabled)
 	}
 
-	func testSaveClearsStorageWhenSettingsAreInvalid() {
+	func testSaveReplacesInvalidFieldWithDefaultAndKeepsStorage() {
 		let invalid = AppSettings(
 			replayDuration: AppSettings.default.replayDuration,
 			resolutionID: AppSettings.default.resolutionID,
@@ -260,7 +247,8 @@ final class AppSettingsStorageTests: XCTestCase {
 
 		AppSettingsStorage.save(invalid)
 
-		XCTAssertNil(UserDefaults.standard.object(forKey: storageKey))
+		XCTAssertNotNil(UserDefaults.standard.object(forKey: storageKey))
+		XCTAssertEqual(AppSettingsStorage.load().qualityID, AppSettings.default.qualityID)
 	}
 
 	// - Default tracking ---
@@ -405,5 +393,85 @@ final class AppSettingsStorageTests: XCTestCase {
 
 		let stored = try storedDictionary()
 		XCTAssertEqual(stored["containerID"] as? String, nonDefaultContainer.id)
+	}
+
+	func testOneUnknownFieldDoesNotResetTheRestOfTheSettings() throws {
+		var settings = AppSettings.default
+		settings.alwaysRecordEnabled = !AppSettings.default.alwaysRecordEnabled
+		settings.replayDuration = 90
+		settings.saveFeedbackSoundID = "sound-removed-in-an-update"
+		UserDefaults.standard.set(try JSONEncoder().encode(settings), forKey: storageKey)
+
+		let loaded = AppSettingsStorage.load()
+
+		XCTAssertEqual(loaded.alwaysRecordEnabled, settings.alwaysRecordEnabled)
+		XCTAssertEqual(loaded.replayDuration, 90)
+		XCTAssertEqual(loaded.saveFeedbackSoundID, AppSettings.default.saveFeedbackSoundID)
+		// The repaired value is persisted so the next launch is stable.
+		XCTAssertEqual(AppSettingsStorage.load().replayDuration, 90)
+	}
+
+	func testSaveRepairsInvalidFieldInsteadOfDeletingStoredSettings() {
+		var settings = AppSettings.default
+		settings.replayDuration = 120
+		settings.qualityID = "old-balanced-id"
+
+		AppSettingsStorage.save(settings)
+
+		XCTAssertNotNil(UserDefaults.standard.data(forKey: storageKey))
+		let loaded = AppSettingsStorage.load()
+		XCTAssertEqual(loaded.replayDuration, 120)
+		XCTAssertEqual(loaded.qualityID, AppSettings.default.qualityID)
+	}
+
+	// - Codec and volumes ---
+
+	func testNewAudioAndCodecSettingsDefaultForOldInstalls() throws {
+		// A blob written before these settings existed must still load.
+		var legacy = try storedDictionaryFor(AppSettings.default)
+		legacy.removeValue(forKey: "videoCodecID")
+		legacy.removeValue(forKey: "desktopAudioVolume")
+		legacy.removeValue(forKey: "microphoneVolume")
+		UserDefaults.standard.set(try JSONSerialization.data(withJSONObject: legacy), forKey: storageKey)
+
+		let loaded = AppSettingsStorage.load()
+
+		XCTAssertEqual(loaded.videoCodecID, CaptureVideoCodec.default.id)
+		XCTAssertEqual(loaded.desktopAudioVolume, 1)
+		XCTAssertEqual(loaded.microphoneVolume, 1)
+	}
+
+	func testVolumesAndCodecRoundTrip() {
+		var settings = AppSettings.default
+		settings.videoCodecID = CaptureVideoCodec.options.last!.id
+		settings.desktopAudioVolume = 0.4
+		settings.microphoneVolume = 0.75
+		AppSettingsStorage.save(settings)
+
+		let loaded = AppSettingsStorage.load()
+		XCTAssertEqual(loaded.videoCodecID, settings.videoCodecID)
+		XCTAssertEqual(loaded.desktopAudioVolume, 0.4)
+		XCTAssertEqual(loaded.microphoneVolume, 0.75)
+	}
+
+	func testOutOfRangeVolumesAndUnknownCodecAreRepairedIndividually() throws {
+		var settings = AppSettings.default
+		settings.replayDuration = 90
+		settings.desktopAudioVolume = 7
+		settings.microphoneVolume = -1
+		settings.videoCodecID = "av1"
+		UserDefaults.standard.set(try JSONEncoder().encode(settings), forKey: storageKey)
+
+		let loaded = AppSettingsStorage.load()
+
+		XCTAssertEqual(loaded.replayDuration, 90)
+		XCTAssertEqual(loaded.desktopAudioVolume, AppSettings.default.desktopAudioVolume)
+		XCTAssertEqual(loaded.microphoneVolume, AppSettings.default.microphoneVolume)
+		XCTAssertEqual(loaded.videoCodecID, CaptureVideoCodec.default.id)
+	}
+
+	private func storedDictionaryFor(_ settings: AppSettings) throws -> [String: Any] {
+		let data = try JSONEncoder().encode(settings)
+		return try XCTUnwrap(JSONSerialization.jsonObject(with: data) as? [String: Any])
 	}
 }

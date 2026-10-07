@@ -8,6 +8,24 @@ import Foundation
 /// Dota 2 also needs `-gamestateintegration` added to its Steam launch
 /// options once, by hand (Library -> Dota 2 -> Properties -> Launch
 /// Options) — that's a one-time manual step in Steam's own UI.
+/// The shared secret between Rewind and the GSI config file it writes. Persisted
+/// so a Rewind relaunch while Dota 2 is running doesn't leave Dota posting the
+/// previous launch's token (which the server would reject) until Dota restarts.
+enum DotaGSIAuthToken {
+	static let defaultsKey = "dotaGSI.authToken"
+
+	static func current(defaults: UserDefaults = .standard) -> String {
+		if let stored = defaults.string(forKey: defaultsKey),
+		   !stored.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+		{
+			return stored
+		}
+		let token = UUID().uuidString
+		defaults.set(token, forKey: defaultsKey)
+		return token
+	}
+}
+
 enum DotaGSIConfigInstaller {
 	static let configFileName = "gamestate_integration_rewind.cfg"
 

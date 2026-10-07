@@ -37,14 +37,28 @@ final class StorageMonitor {
     }
 
     private func currentWarning() -> String? {
-        guard let freeBytes = availableBytes() else { return nil }
-        guard freeBytes < Constants.thresholdBytes else { return nil }
-        return "Low disk space: \(ByteCountFormatter.string(fromByteCount: freeBytes, countStyle: .file)) left."
+        Self.warning(
+            outputFreeBytes: Self.availableBytes(forFolder: ClipStorageLocation.current()),
+            scratchFreeBytes: Self.availableBytes(forFolder: FileManager.default.temporaryDirectory)
+        )
     }
 
-    private func availableBytes() -> Int64? {
+    /// Clips are exported to the output folder, but the rolling live segments (up
+    /// to five minutes of video) are written to the temporary directory, which is
+    /// usually the system volume. Either one running out of space breaks recording.
+    nonisolated static func warning(outputFreeBytes: Int64?, scratchFreeBytes: Int64?) -> String? {
+        if let free = outputFreeBytes, free < Constants.thresholdBytes {
+            return "Low disk space: \(ByteCountFormatter.string(fromByteCount: free, countStyle: .file)) left."
+        }
+        if let free = scratchFreeBytes, free < Constants.thresholdBytes {
+            return "Low disk space for live recording: \(ByteCountFormatter.string(fromByteCount: free, countStyle: .file)) left on the system volume."
+        }
+        return nil
+    }
+
+    nonisolated static func availableBytes(forFolder folder: URL) -> Int64? {
         let fileManager = FileManager.default
-        let targetURL = nearestExistingDirectory(ClipStorageLocation.current())
+        let targetURL = nearestExistingDirectory(folder)
 
         if let resourceValues = try? targetURL.resourceValues(forKeys: [
             .volumeAvailableCapacityForImportantUsageKey,
@@ -69,7 +83,7 @@ final class StorageMonitor {
 
     /// the output folder may not exist yet, but free space is a property of the
     /// volume, so any existing ancestor on that volume gives the right answer
-    private func nearestExistingDirectory(_ url: URL) -> URL {
+    nonisolated private static func nearestExistingDirectory(_ url: URL) -> URL {
         let fileManager = FileManager.default
         var candidate = url.standardizedFileURL
         while !fileManager.fileExists(atPath: candidate.path) {

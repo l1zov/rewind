@@ -79,4 +79,28 @@ final class ReplayWriterTests: XCTestCase {
 			assertCaptureError(error, is: .noFramesCaptured)
 		}
 	}
+
+	func testFinishWritingOnFailedWriterThrowsInsteadOfCrashing() async throws {
+		let directory = try makeTempDirectory()
+		defer { try? FileManager.default.removeItem(at: directory) }
+
+		let writer = ReplayWriter(queue: DispatchQueue(label: "ReplayWriterTests.failedWriter"))
+		try writer.configure(
+			outputURL: directory.appendingPathComponent("segment.mov"),
+			videoSize: CGSize(width: 1280, height: 720),
+			includeAudio: false,
+			audioSettings: nil
+		)
+		// A writer that is no longer `.writing` (e.g. after a disk-full append failure)
+		// while the session is still marked started.
+		writer.writer?.cancelWriting()
+		writer.sessionStarted = true
+
+		do {
+			_ = try await writer.finishWriting()
+			XCTFail("Expected finishWriting to throw")
+		} catch {
+			// Any thrown error is acceptable; reaching here means no NSException trap.
+		}
+	}
 }

@@ -5,7 +5,7 @@ import Carbon
 final class GlobalHotkeyManager {
 	static let shared = GlobalHotkeyManager()
 
-	private let hotKeySignature = OSType(0x5257_4E44) // "RWND"
+	let hotKeySignature = OSType(0x5257_4E44) // "RWND"
 	private let saveReplayHotKeyId: UInt32 = 1
 	private let recordToggleHotKeyId: UInt32 = 2
 	private var saveReplayHotKeyRef: EventHotKeyRef?
@@ -40,12 +40,27 @@ final class GlobalHotkeyManager {
 		let installStatus = InstallEventHandler(
 			GetEventDispatcherTarget(),
 			{ _, event, userData in
-				guard let userData else { return noErr }
+				guard let userData, let event else { return noErr }
+				// The EventRef is only valid for the duration of this callback, so
+				// read the hot key ID now and hand only plain values to the task.
+				var hotKeyID = EventHotKeyID()
+				let status = GetEventParameter(
+					event,
+					EventParamName(kEventParamDirectObject),
+					EventParamType(typeEventHotKeyID),
+					nil,
+					MemoryLayout<EventHotKeyID>.size,
+					nil,
+					&hotKeyID
+				)
+				guard status == noErr else { return noErr }
+				let signature = hotKeyID.signature
+				let id = hotKeyID.id
 				let manager = Unmanaged<GlobalHotkeyManager>
 					.fromOpaque(userData)
 					.takeUnretainedValue()
 				Task { @MainActor in
-					manager.handleHotKey(event: event)
+					manager.handleHotKey(signature: signature, id: id)
 				}
 				return noErr
 			},
@@ -132,24 +147,10 @@ final class GlobalHotkeyManager {
 		}
 	}
 
-	private func handleHotKey(event: EventRef?) {
-		guard let event else { return }
+	func handleHotKey(signature: OSType, id: UInt32) {
+		guard signature == hotKeySignature else { return }
 
-		var hotKeyID = EventHotKeyID()
-		let status = GetEventParameter(
-			event,
-			EventParamName(kEventParamDirectObject),
-			EventParamType(typeEventHotKeyID),
-			nil,
-			MemoryLayout<EventHotKeyID>.size,
-			nil,
-			&hotKeyID
-		)
-
-		guard status == noErr else { return }
-		guard hotKeyID.signature == hotKeySignature else { return }
-
-		switch hotKeyID.id {
+		switch id {
 		case saveReplayHotKeyId:
 			onSaveReplay?()
 		case recordToggleHotKeyId:

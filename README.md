@@ -6,7 +6,9 @@ Rewind is a free, open-source macOS app for instantly clipping highlights of you
 
 - **Instant Replay Capture:** Save the last X seconds of your gameplay instantly (customizable duration).
 - **Always Record Mode:** Optionally record continuously so you never miss a moment.
-- **Customizable Quality:** Adjust resolution, frame rate, audio codec and container format to suit your needs.
+- **Customizable Quality:** Adjust resolution, frame rate, video codec, audio codec and container format to suit your needs.
+- **Discord-friendly clips:** Clips default to H.264 + AAC in a stream-ready MP4, so they preview inline in Discord. Switch to HEVC in **Settings -> Video codec** for smaller files (Discord can't preview HEVC).
+- **Microphone and desktop audio in one track:** Saved clips mix your mic and desktop audio into a single audio track so everyone hears both, with separate **Desktop volume** and **Microphone volume** sliders in Settings.
 - **Global Hotkeys:** Configure custom hotkeys for starting/stopping recording and saving replays.
 - **Audio Feedback:** Hear customizable sound cues when a recording starts, stops, saves or if an error occurs.
 - **Discord Rich Presence:** Show off what you're recording to your friends on Discord.
@@ -14,7 +16,7 @@ Rewind is a free, open-source macOS app for instantly clipping highlights of you
 ## Requirements
 
 - macOS 14.0 (Ventura) or later
-- At least 10 gb of free disk space
+- At least 10 gb of free disk space on the volume your clips are saved to. Rewind also keeps a rolling buffer of recent footage (up to five minutes) in your Mac's temporary folder, so the system volume needs free space too. Rewind shows a low-storage warning if either one runs low
 
 ## Installation
  
@@ -42,10 +44,17 @@ Rewind is built using Swift and Swift Package Manager.
    swift run
    ```
 
+3. Run the tests:
+   ```bash
+   swift test
+   ```
+
 ## Permissions
 
 
-On first launch, Rewind will ask for **Screen Recording** access. Click Allow. If you accidentally denied it, turn it back on in **System Settings -> Privacy & Security -> Screen Recording**.
+On first launch, Rewind will ask for **Screen Recording** access. Click Allow. If you accidentally denied it, turn it back on in **System Settings -> Privacy & Security -> Screen Recording**. If Screen Recording access is missing, Rewind won't keep retrying in the background; once you've granted it again, relaunch Rewind.
+
+Turning **Record Microphone** off in Settings also removes Rewind's Microphone permission from macOS (`tccutil reset Microphone`), so it isn't left granted across updates; turning it back on asks again.
 
 ## Contact
 

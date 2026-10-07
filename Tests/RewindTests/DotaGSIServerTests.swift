@@ -56,6 +56,26 @@ final class DotaGSIServerTests: XCTestCase {
 		XCTAssertEqual(result?.body, Data("{\"a\":1}".utf8))
 	}
 
+	func testNegativeContentLengthDoesNotCrashAndIsRejected() {
+		let request = Data("POST / HTTP/1.1\r\nContent-Length: -1\r\n\r\n{\"a\":1}".utf8)
+		let result = DotaGSIServer.splitCompleteRequest(request)
+		// Treated as a zero-length body instead of trapping in `prefix(-1)`.
+		XCTAssertEqual(result?.body, Data())
+	}
+
+	func testContentLengthRejectsNegativeAndOversizedValues() {
+		XCTAssertNil(DotaGSIServer.contentLength(fromHeaders: "POST / HTTP/1.1\r\nContent-Length: -5"))
+		XCTAssertNil(DotaGSIServer.contentLength(
+			fromHeaders: "POST / HTTP/1.1\r\nContent-Length: \(DotaGSIServer.maxRequestBytes + 1)"))
+		XCTAssertEqual(
+			DotaGSIServer.contentLength(fromHeaders: "POST / HTTP/1.1\r\nContent-Length: \(DotaGSIServer.maxRequestBytes)"),
+			DotaGSIServer.maxRequestBytes)
+	}
+
+	func testListenerIsRestrictedToLoopback() {
+		XCTAssertEqual(DotaGSIServer.listenerParameters().requiredInterfaceType, .loopback)
+	}
+
 	func testContentLengthIsCaseInsensitiveAndTrimmed() {
 		let headers = "POST / HTTP/1.1\r\ncontent-length:   42  \r\nHost: localhost"
 		XCTAssertEqual(DotaGSIServer.contentLength(fromHeaders: headers), 42)

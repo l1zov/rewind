@@ -178,4 +178,30 @@ final class ClipUploadTests: XCTestCase {
 		let reloaded = try JSONDecoder().decode(AppSettings.self, from: reencoded)
 		XCTAssertEqual(reloaded.enabledUploadProviderIDs, ["from-the-future"])
 	}
+
+	func testFailedStagingDoesNotLeakMultipartBody() async throws {
+		let folder = FileManager.default.temporaryDirectory
+			.appendingPathComponent("ClipUploadTests-\(UUID().uuidString)", isDirectory: true)
+		try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+		defer {
+			try? FileManager.default.setAttributes([.posixPermissions: 0o644], ofItemAtPath: folder.appendingPathComponent("clip.mp4").path)
+			try? FileManager.default.removeItem(at: folder)
+		}
+		let clipURL = folder.appendingPathComponent("clip.mp4")
+		try Data(repeating: 1, count: 1024).write(to: clipURL)
+		// Size is readable but the contents are not, so staging fails after the body file exists.
+		try FileManager.default.setAttributes([.posixPermissions: 0o000], ofItemAtPath: clipURL.path)
+
+		let before = multipartBodies()
+		do {
+			_ = try await ClipUploader.shared.upload(clipAt: clipURL, provider: try XCTUnwrap(ClipUploadProvider.providers.first))
+			XCTFail("Expected upload to throw")
+		} catch {}
+		XCTAssertEqual(multipartBodies().subtracting(before), [], "Partial multipart body was leaked")
+	}
+
+	private func multipartBodies() -> Set<String> {
+		let names = (try? FileManager.default.contentsOfDirectory(atPath: FileManager.default.temporaryDirectory.path)) ?? []
+		return Set(names.filter { $0.hasPrefix("rewind-upload-") })
+	}
 }

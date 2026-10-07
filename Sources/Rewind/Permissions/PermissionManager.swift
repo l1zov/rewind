@@ -28,13 +28,15 @@ enum PermissionManager {
 		)
 	}
 
-	static func ensureScreenAccess() async throws {
+	/// - Parameter prompt: show the system permission prompt when access is
+	///   missing. Pass `false` for automatic (non-user-initiated) starts so a
+	///   revoked permission doesn't re-open the prompt on every retry.
+	static func ensureScreenAccess(prompt: Bool = true) async throws {
 		if CGPreflightScreenCaptureAccess() {
 			return
 		}
 
-		let granted = CGRequestScreenCaptureAccess()
-		if !granted {
+		guard prompt, CGRequestScreenCaptureAccess() else {
 			throw PermissionError.screenRecordingDenied
 		}
 	}

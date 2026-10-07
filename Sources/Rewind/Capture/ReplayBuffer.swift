@@ -54,6 +54,12 @@ actor ReplayBuffer {
 	}
 
 	/// unlocks segments after export completes, allowing them to be pruned
+	/// URLs of every buffered segment, oldest first. Read-only: unlike
+	/// `latestSegments` it neither prunes missing files nor locks anything.
+	func segmentURLs() -> [URL] {
+		segments.map(\.url)
+	}
+
 	func unlockSegments(_ segments: [ReplaySegment]) {
 		for segment in segments {
 			lockedSegmentIDs.remove(segment.id)

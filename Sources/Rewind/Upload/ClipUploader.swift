@@ -140,6 +140,10 @@ final class ClipUploader: @unchecked Sendable {
 		guard FileManager.default.createFile(atPath: bodyURL.path, contents: nil) else {
 			throw ClipUploadError.clipUnreadable
 		}
+		// Staging can fail part-way (unreadable clip, disk full); don't leave a
+		// clip-sized partial body behind in the temp folder when it does.
+		var staged = false
+		defer { if !staged { try? FileManager.default.removeItem(at: bodyURL) } }
 
 		let output = try FileHandle(forWritingTo: bodyURL)
 		defer { try? output.close() }
@@ -172,6 +176,7 @@ final class ClipUploader: @unchecked Sendable {
 		}
 
 		try output.write(contentsOf: Data("\r\n--\(boundary)--\r\n".utf8))
+		staged = true
 		return bodyURL
 	}
 

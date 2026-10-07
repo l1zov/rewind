@@ -102,7 +102,8 @@ extension ReplayWriter {
                 videoMode: desiredMode,
                 quality: configuredQuality,
                 frameRate: configuredFrameRate,
-                recordMicrophone: configuredRecordMicrophone
+                recordMicrophone: configuredRecordMicrophone,
+                videoCodec: configuredVideoCodec
             )
         } catch {
             AppLog.error(.writer, "ReplayWriter.appendVideo reconfigure failed", error: error)
@@ -137,7 +138,8 @@ extension ReplayWriter {
                 videoMode: configuredVideoMode,
                 quality: configuredQuality,
                 frameRate: configuredFrameRate,
-                recordMicrophone: configuredRecordMicrophone
+                recordMicrophone: configuredRecordMicrophone,
+                videoCodec: configuredVideoCodec
             )
         } catch {
             AppLog.error(.writer, "ReplayWriter.appendVideo reconfigure failed", error: error)

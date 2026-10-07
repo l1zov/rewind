@@ -7,7 +7,8 @@ struct ReplayExporter {
     func export(
         segments: [ReplaySegment],
         seconds: TimeInterval,
-        container: CaptureContainer
+        container: CaptureContainer,
+        audioMix: ExportAudioMix = .unity
     ) async throws -> URL {
         guard !segments.isEmpty else { throw CaptureError.noFramesCaptured }
 
@@ -95,6 +96,21 @@ struct ReplayExporter {
         try? FileManager.default.removeItem(at: exportURL)
 
         do {
+            let reconciledMix = audioMix.reconciled(trackCount: audioTracks.count)
+            if reconciledMix != audioMix {
+                AppLog.error(
+                    .capture,
+                    "Audio roles (\(audioMix.roles.count)) don't match recorded tracks (\(audioTracks.count)); using unity gain")
+            }
+            if reconciledMix.needsMixdown(trackCount: audioTracks.count) {
+                return try await exportWithMixdown(
+                    asset: composition,
+                    timeRange: timeRange,
+                    outputURL: exportURL,
+                    container: container,
+                    audioMix: reconciledMix
+                )
+            }
             return try await exportWithPassthrough(
                 asset: composition,
                 timeRange: timeRange,
@@ -127,7 +143,9 @@ struct ReplayExporter {
         exportSession.outputURL = outputURL
         exportSession.outputFileType = container.avFileType
         exportSession.timeRange = timeRange
-        exportSession.shouldOptimizeForNetworkUse = false
+        // Puts the index (moov) at the front so players can start before the
+        // whole file is available; Discord's inline preview relies on this.
+        exportSession.shouldOptimizeForNetworkUse = true
 
         let session = UncheckedSendable(exportSession)
         return try await withCheckedThrowingContinuation { continuation in
@@ -144,5 +162,154 @@ struct ReplayExporter {
                 }
             }
         }
+    }
+
+    // - Mixdown ---
+
+    private static var mixdownPCMSettings: [String: Any] { [
+        AVFormatIDKey: kAudioFormatLinearPCM,
+        AVSampleRateKey: 48_000,
+        AVNumberOfChannelsKey: 2,
+        AVLinearPCMBitDepthKey: 32,
+        AVLinearPCMIsFloatKey: true,
+        AVLinearPCMIsBigEndianKey: false,
+        AVLinearPCMIsNonInterleaved: false,
+    ] }
+
+    private static var mixdownAACSettings: [String: Any] { [
+        AVFormatIDKey: kAudioFormatMPEG4AAC,
+        AVSampleRateKey: 48_000,
+        AVNumberOfChannelsKey: 2,
+        AVEncoderBitRateKey: 192_000,
+    ] }
+
+    /// Copies the video untouched (no re-encode) and folds every audio track into a
+    /// single AAC track, applying the per-source volume.
+    private func exportWithMixdown(
+        asset: AVAsset,
+        timeRange: CMTimeRange,
+        outputURL: URL,
+        container: CaptureContainer,
+        audioMix: ExportAudioMix
+    ) async throws -> URL {
+        let videoTracks = try await asset.loadTracks(withMediaType: .video)
+        let audioTracks = try await asset.loadTracks(withMediaType: .audio)
+        guard let videoTrack = videoTracks.first, !audioTracks.isEmpty else {
+            throw CaptureError.exportFailed
+        }
+
+        let reader = try AVAssetReader(asset: asset)
+        reader.timeRange = timeRange
+
+        let videoOutput = AVAssetReaderTrackOutput(track: videoTrack, outputSettings: nil)
+        videoOutput.alwaysCopiesSampleData = false
+        guard reader.canAdd(videoOutput) else { throw CaptureError.exportFailed }
+        reader.add(videoOutput)
+
+        let mix = AVMutableAudioMix()
+        mix.inputParameters = audioTracks.enumerated().map { index, track in
+            let parameters = AVMutableAudioMixInputParameters(track: track)
+            parameters.setVolume(audioMix.volume(forTrack: index), at: .zero)
+            return parameters
+        }
+        let audioOutput = AVAssetReaderAudioMixOutput(
+            audioTracks: audioTracks, audioSettings: Self.mixdownPCMSettings)
+        audioOutput.audioMix = mix
+        guard reader.canAdd(audioOutput) else { throw CaptureError.exportFailed }
+        reader.add(audioOutput)
+
+        let writer = try AVAssetWriter(outputURL: outputURL, fileType: container.avFileType)
+        writer.shouldOptimizeForNetworkUse = true
+
+        let formatHint = try await videoTrack.load(.formatDescriptions).first
+        let videoInput = AVAssetWriterInput(
+            mediaType: .video, outputSettings: nil, sourceFormatHint: formatHint)
+        videoInput.transform = try await videoTrack.load(.preferredTransform)
+        videoInput.expectsMediaDataInRealTime = false
+        let audioInput = AVAssetWriterInput(
+            mediaType: .audio, outputSettings: Self.mixdownAACSettings)
+        audioInput.expectsMediaDataInRealTime = false
+        guard writer.canAdd(videoInput), writer.canAdd(audioInput) else {
+            throw CaptureError.exportFailed
+        }
+        writer.add(videoInput)
+        writer.add(audioInput)
+
+        guard reader.startReading() else { throw reader.error ?? CaptureError.exportFailed }
+        guard writer.startWriting() else {
+            reader.cancelReading()
+            throw writer.error ?? CaptureError.exportFailed
+        }
+        writer.startSession(atSourceTime: timeRange.start)
+
+        async let videoDone: Void = Self.pump(
+            output: videoOutput, into: videoInput, writer: writer, label: "rewind.export.video")
+        async let audioDone: Void = Self.pump(
+            output: audioOutput, into: audioInput, writer: writer, label: "rewind.export.audio")
+        _ = await (videoDone, audioDone)
+
+        if reader.status == .failed {
+            writer.cancelWriting()
+            throw reader.error ?? CaptureError.exportFailed
+        }
+        // finishWriting on a writer that is no longer `.writing` (disk full, encoder
+        // error) raises an uncatchable NSInternalInconsistencyException.
+        guard writer.status == .writing else {
+            reader.cancelReading()
+            let error = writer.error ?? CaptureError.exportFailed
+            writer.cancelWriting()
+            throw error
+        }
+
+        let finishingWriter = UncheckedSendable(writer)
+        await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
+            finishingWriter.value.finishWriting { continuation.resume() }
+        }
+        guard writer.status == .completed else {
+            throw writer.error ?? CaptureError.exportFailed
+        }
+        return outputURL
+    }
+
+    /// Feeds every sample from `output` into `input`, then marks the input finished.
+    private static func pump(
+        output: AVAssetReaderOutput, into input: AVAssetWriterInput, writer: AVAssetWriter,
+        label: String
+    ) async {
+        let queue = DispatchQueue(label: label)
+        let pair = UncheckedSendable((output, input, writer))
+        await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
+            let finished = Locked(false)
+            input.requestMediaDataWhenReady(on: queue) {
+                let (output, input, writer) = pair.value
+                while input.isReadyForMoreMediaData {
+                    // Stop as soon as the writer has failed or been cancelled (by the other
+                    // input's pump, say) so neither loop waits on a dead writer.
+                    guard writer.status == .writing,
+                          let sample = output.copyNextSampleBuffer(), input.append(sample)
+                    else {
+                        input.markAsFinished()
+                        if finished.exchange(true) == false { continuation.resume() }
+                        return
+                    }
+                }
+            }
+        }
+    }
+}
+
+/// Minimal lock-protected value, used to make a continuation resume exactly once.
+private final class Locked<Value>: @unchecked Sendable {
+    private let lock = NSLock()
+    private var value: Value
+
+    init(_ value: Value) { self.value = value }
+
+    func exchange(_ newValue: Value) -> Value {
+        lock.lock()
+        defer { lock.unlock() }
+        let old = value
+        value = newValue
+        return old
     }
 }

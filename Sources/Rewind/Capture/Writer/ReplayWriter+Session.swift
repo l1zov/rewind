@@ -179,6 +179,21 @@ extension ReplayWriter {
                 return
             }
 
+            // AVAssetWriter raises an uncatchable NSInternalInconsistencyException
+            // if finishWriting is called outside `.writing` — which is where a
+            // failed append (disk full, encoder error) leaves it.
+            guard writer.status == .writing else {
+                let error = writer.error ?? CaptureError.exportFailed
+                AppLog.error(
+                    .writer,
+                    "ReplayWriter.finishWriting: writer not writing. status: \(writer.status.rawValue)",
+                    error: error)
+                self.resetState()
+                try? FileManager.default.removeItem(at: outputURL)
+                completion(.failure(error))
+                return
+            }
+
             AppLog.debug(
                 .writer, "ReplayWriter.finishWriting: start. status:", writer.status.rawValue)
 

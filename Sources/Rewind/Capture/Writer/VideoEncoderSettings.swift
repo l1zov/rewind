@@ -5,16 +5,6 @@ import VideoToolbox
 /// Builds the video `AVAssetWriterInput` output settings and matching source
 /// pixel-buffer format for a given quality preset, resolution, and frame rate.
 enum VideoEncoderSettings {
-    /// intel's quick sync encoder rejects a second concurrent HEvc session
-    /// h264 does not have such limitation
-    static var codec: AVVideoCodecType {
-        #if arch(x86_64)
-            return .h264
-        #else
-            return .hevc
-        #endif
-    }
-
     /// Source pixel format handed to the pixel-buffer adaptor. Must match the
     /// format ScreenCaptureKit captures (NV12); declaring a different format here
     /// breaks the zero-copy path and forces a per-frame color conversion on the
@@ -28,16 +18,18 @@ enum VideoEncoderSettings {
         quality: QualityPreset,
         width: Int,
         height: Int,
-        frameRate: Int
+        frameRate: Int,
+        codec: CaptureVideoCodec = .default
     ) -> [String: Any] {
         [
-            AVVideoCodecKey: codec,
+            AVVideoCodecKey: codec.avCodec,
             AVVideoWidthKey: width,
             AVVideoHeightKey: height,
             AVVideoCompressionPropertiesKey: compressionProperties(
                 for: quality,
                 videoSize: CGSize(width: width, height: height),
-                frameRate: frameRate
+                frameRate: frameRate,
+                codec: codec
             ),
         ]
     }
@@ -58,7 +50,8 @@ enum VideoEncoderSettings {
     private static func compressionProperties(
         for quality: QualityPreset,
         videoSize: CGSize,
-        frameRate: Int
+        frameRate: Int,
+        codec: CaptureVideoCodec
     ) -> [String: Any] {
         let normalizedFrameRate = max(30, min(frameRate, 120))
         let averageBitrateMbps = targetBitrateMbps(
@@ -81,7 +74,7 @@ enum VideoEncoderSettings {
             kVTCompressionPropertyKey_RealTime as String: true,
         ]
 
-        if codec == .h264 {
+        if codec.avCodec == .h264 {
             props[AVVideoProfileLevelKey] = AVVideoProfileLevelH264HighAutoLevel
         }
 

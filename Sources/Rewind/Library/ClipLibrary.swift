@@ -87,12 +87,27 @@ final class ClipLibrary: ObservableObject {
 		isLoading = false
 	}
 
+	/// True for `/Volumes/<name>/...` paths whose `/Volumes/<name>` mount point is gone.
+	nonisolated static func isOnUnmountedVolume(_ url: URL) -> Bool {
+		let components = url.standardizedFileURL.pathComponents
+		guard components.count > 3, components[1] == "Volumes" else { return false }
+		return !FileManager.default.fileExists(atPath: "/Volumes/\(components[2])")
+	}
+
 	private func pruningMissingFiles(from stored: [Clip]) async -> [Clip] {
 		let fm = FileManager.default
 		var surviving: [Clip] = []
 		for clip in stored {
 			guard clip.url.isFileURL, !fm.fileExists(atPath: clip.url.path) else {
 				surviving.append(clip)
+				continue
+			}
+			// An unmounted external drive or network share: keep the metadata and
+			// favorites so they come back with the volume, and hide the clip until
+			// then. A missing folder on a volume that *is* mounted was deleted, so
+			// its rows are pruned like any other missing file.
+			if Self.isOnUnmountedVolume(clip.url) {
+				AppLog.debug(.library, "ClipLibrary: keeping clip on unmounted volume:", clip.url.path)
 				continue
 			}
 			do {

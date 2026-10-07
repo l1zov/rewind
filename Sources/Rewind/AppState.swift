@@ -115,6 +115,34 @@ final class AppState: ObservableObject {
 		}
 	}
 
+	@Published var selectedVideoCodec: CaptureVideoCodec = .default {
+		didSet {
+			guard !isRestoringSettings else { return }
+			guard selectedVideoCodec != oldValue else { return }
+			persistSettings()
+			restartCaptureSilently()
+		}
+	}
+
+	/// Mix level (0...1) of desktop audio in saved clips. Applied when a clip is
+	/// saved, so changing it needs no capture restart.
+	@Published var desktopAudioVolume = AppSettings.default.desktopAudioVolume {
+		didSet {
+			guard !isRestoringSettings else { return }
+			guard desktopAudioVolume != oldValue else { return }
+			persistSettings()
+		}
+	}
+
+	/// Mix level (0...1) of the microphone in saved clips.
+	@Published var microphoneVolume = AppSettings.default.microphoneVolume {
+		didSet {
+			guard !isRestoringSettings else { return }
+			guard microphoneVolume != oldValue else { return }
+			persistSettings()
+		}
+	}
+
 	@Published var hotkey: Hotkey = .default {
 		didSet {
 			guard !isRestoringSettings else { return }
@@ -338,12 +366,23 @@ final class AppState: ObservableObject {
 						permissionState = PermissionManager.currentState()
 					} catch {
 						AppLog.error(.app, "Microphone access denied:", error)
-						recordMicrophoneEnabled = false
+						// The user just answered the system prompt; resetting would only
+						// make it ask again straight away.
+						// (Only when the toggle is still on: otherwise the assignment is a
+						// no-op, nothing would clear the flag, and the next real "off" would
+						// skip its reset.)
+						if recordMicrophoneEnabled {
+							skipMicrophonePermissionReset = true
+							recordMicrophoneEnabled = false
+						}
 					}
 					restartCaptureSilently()
 				}
-			} else {
+			} else if skipMicrophonePermissionReset {
+				skipMicrophonePermissionReset = false
 				restartCaptureSilently()
+			} else {
+				restartCaptureThenResetMicrophonePermission()
 			}
 		}
 	}
@@ -461,11 +500,16 @@ final class AppState: ObservableObject {
 	/// forever; once this crosses the threshold we drop the stale filter so the next
 	/// attempt falls back to full-display capture instead of looping forever.
 	private var automaticRestartFailureCount = 0
+	/// Consecutive failed automatic starts, for retry backoff. Unlike
+	/// `automaticRestartFailureCount` it is not reset by the full-display fallback.
+	private var automaticRetryAttempt = 0
+	private let silentRestartCoalescer = RestartCoalescer()
 	private static let maxAutomaticRestartFailuresBeforeFallback = 3
 	private var awaitingScreenGrant = false
 	private var screenGrantPollTask: Task<Void, Never>?
 	private var preferredResolutionID: String?
 	private var isRestoringSettings = false
+	private var skipMicrophonePermissionReset = false
 	private var cancellables = Set<AnyCancellable>()
 
 	init(
@@ -481,7 +525,7 @@ final class AppState: ObservableObject {
 		self.analytics = analytics
 		self.hotkeyManager = hotkeyManager
 
-		let dotaGSIAuthToken = UUID().uuidString
+		let dotaGSIAuthToken = DotaGSIAuthToken.current()
 		let dotaGSIServer = DotaGSIServer(port: DotaGSIServer.defaultPort, authToken: dotaGSIAuthToken)
 		self.dotaGSIServer = dotaGSIServer
 		gameDetector = GamePresenceDetector(dotaGSI: dotaGSIServer)
@@ -502,6 +546,9 @@ final class AppState: ObservableObject {
 		selectedFrameRate = settings.frameRateOption
 		selectedContainer = settings.container
 		selectedAudioCodec = settings.audioCodec
+		selectedVideoCodec = settings.videoCodec
+		desktopAudioVolume = settings.desktopAudioVolume
+		microphoneVolume = settings.microphoneVolume
 		preferredResolutionID = settings.resolutionID
 		hotkey = settings.hotkey
 		startRecordingHotkey = settings.startRecordingHotkey
@@ -564,6 +611,9 @@ final class AppState: ObservableObject {
 		selectedFrameRate = settings.frameRateOption
 		selectedContainer = settings.container
 		selectedAudioCodec = settings.audioCodec
+		selectedVideoCodec = settings.videoCodec
+		desktopAudioVolume = settings.desktopAudioVolume
+		microphoneVolume = settings.microphoneVolume
 		preferredResolutionID = settings.resolutionID
 		selectedResolution = availableResolutions.first(where: { $0.isNative })
 			?? availableResolutions.first
@@ -759,7 +809,7 @@ final class AppState: ObservableObject {
 			automaticCaptureRetryTask?.cancel()
 		}
 		do {
-			try await PermissionManager.ensureScreenAccess()
+			try await PermissionManager.ensureScreenAccess(prompt: !isAutomatic)
 			permissionState = PermissionManager.currentState()
 
 			// On a manual start, let the user choose what to capture. Automatic
@@ -786,6 +836,7 @@ final class AppState: ObservableObject {
 				quality: selectedQuality,
 				frameRate: selectedFrameRate.framesPerSecond,
 				audioCodec: selectedAudioCodec,
+				videoCodec: selectedVideoCodec,
 				recordMicrophoneEnabled: recordMicrophoneEnabled,
 				recordDesktopAudioEnabled: recordDesktopAudioEnabled,
 				microphoneDeviceID: selectedMicrophoneDeviceID
@@ -794,6 +845,7 @@ final class AppState: ObservableObject {
 			let settings = analyticsSettingsSnapshot
 			Task { await analytics.captureSessionStarted(reason: reason, settings: settings) }
 			automaticRestartFailureCount = 0
+			automaticRetryAttempt = 0
 			updateDiscordActivity(.recording(game: nil, joinURL: nil, artURL: nil))
 			if !isAutomatic {
 				playRecordingStartFeedback()
@@ -802,12 +854,17 @@ final class AppState: ObservableObject {
 		} catch {
 			isCapturing = false
 			updateDiscordActivity(.idle)
+			if case PermissionError.screenRecordingDenied = error {
+				// Refresh so the menu-bar permission banner reflects reality.
+				permissionState = PermissionManager.currentState()
+			}
 			let category = analyticsErrorCategory(error)
+			let willRetry = isAutomatic && CaptureRetryPolicy.shouldRetry(after: error)
 			Task {
 				await analytics.captureStartFailed(
 					reason: reason,
 					category: category,
-					retrying: isAutomatic
+					retrying: willRetry
 				)
 			}
 
@@ -816,6 +873,10 @@ final class AppState: ObservableObject {
 					return
 				}
 				AppLog.error(.app, "Automatic capture start failed", error)
+				guard CaptureRetryPolicy.shouldRetry(after: error) else {
+					AppLog.error(.app, "Not retrying automatic capture: Screen Recording permission is missing")
+					return
+				}
 				automaticRestartFailureCount += 1
 				if automaticRestartFailureCount >= Self.maxAutomaticRestartFailuresBeforeFallback {
 					AppLog.error(
@@ -869,25 +930,63 @@ final class AppState: ObservableObject {
 		if isDisplayOrSystemAsleep {
 			return
 		}
-		Task {
-			await captureManager.stop()
-			do {
-				try await captureManager.start(
-					contentFilter: lastContentFilter,
-					resolution: selectedResolution,
-					quality: selectedQuality,
-					frameRate: selectedFrameRate.framesPerSecond,
-					audioCodec: selectedAudioCodec,
-					recordMicrophoneEnabled: recordMicrophoneEnabled,
-					recordDesktopAudioEnabled: recordDesktopAudioEnabled,
-					microphoneDeviceID: selectedMicrophoneDeviceID
-				)
-			} catch {
-				isCapturing = false
-				updateDiscordActivity(.idle)
-				playErrorFeedback()
-				AppLog.error(.app, "Silent restart failed:", error)
+		// Settings often change in bursts (quality then frame rate, ...). Coalesce
+		// them so restarts never overlap and the last one uses the latest settings.
+		silentRestartCoalescer.request { [weak self] in
+			await self?.performSilentRestart()
+		}
+	}
+
+	/// Turning the microphone off should also remove Rewind's macOS Microphone
+	/// permission. Capture is restarted without the mic first, so the permission
+	/// isn't pulled out from under a running mic stream.
+	private func restartCaptureThenResetMicrophonePermission() {
+		// If the user switched the mic back on in the meantime, capture is (or is
+		// about to be) using it: resetting the permission now would pull it out
+		// from under the stream, so re-check at the last moment.
+		let reset: @MainActor () -> Void = { [weak self] in
+			guard let self, !self.recordMicrophoneEnabled else { return }
+			Task.detached(priority: .utility) { [weak self] in
+				let stillOff = await MainActor.run { self.map { !$0.recordMicrophoneEnabled } ?? false }
+				guard stillOff else { return }
+				TCCReset.resetMicrophone()
+				await MainActor.run { [weak self] in
+					self?.permissionState = PermissionManager.currentState()
+				}
 			}
+		}
+		guard isCapturing, !isDisplayOrSystemAsleep else {
+			reset()
+			return
+		}
+		silentRestartCoalescer.request({ [weak self] in
+			await self?.performSilentRestart()
+		}, completion: reset)
+	}
+
+	private func performSilentRestart() async {
+		guard isCapturing, !isDisplayOrSystemAsleep else { return }
+		await captureManager.stop()
+		// The user may have pressed Stop, or the system gone to sleep, while the
+		// stop above was in flight; don't bring capture back in that case.
+		guard isCapturing, !isDisplayOrSystemAsleep else { return }
+		do {
+			try await captureManager.start(
+				contentFilter: lastContentFilter,
+				resolution: selectedResolution,
+				quality: selectedQuality,
+				frameRate: selectedFrameRate.framesPerSecond,
+				audioCodec: selectedAudioCodec,
+				videoCodec: selectedVideoCodec,
+				recordMicrophoneEnabled: recordMicrophoneEnabled,
+				recordDesktopAudioEnabled: recordDesktopAudioEnabled,
+				microphoneDeviceID: selectedMicrophoneDeviceID
+			)
+		} catch {
+			isCapturing = false
+			updateDiscordActivity(.idle)
+			playErrorFeedback()
+			AppLog.error(.app, "Silent restart failed:", error)
 		}
 	}
 
@@ -911,7 +1010,8 @@ final class AppState: ObservableObject {
 		}
 		do {
 			let url = try await captureManager.saveReplay(
-				seconds: replayDuration, container: selectedContainer
+				seconds: replayDuration, container: selectedContainer,
+				desktopAudioVolume: desktopAudioVolume, microphoneVolume: microphoneVolume
 			)
 			let clipDuration = try await resolvedClipDuration(for: url)
 			let clip = try await clipLibrary.addClip(url: url, duration: clipDuration)
@@ -1062,12 +1162,16 @@ final class AppState: ObservableObject {
 		isAsleep = true
 		automaticCaptureRetryTask?.cancel()
 		automaticCaptureRetryTask = nil
+		automaticRetryAttempt = 0
 		if isCapturing {
+			// Flip the flag first: if the system wakes while the stop is still in
+			// flight, the wake's start (queued behind the stop) sets it back to
+			// true afterwards instead of this task clobbering it.
+			isCapturing = false
+			updateDiscordActivity(.idle)
 			Task {
 				await captureManager.stop()
-				isCapturing = false
 				await analytics.captureSessionEnded(reason: .sleep)
-				updateDiscordActivity(.idle)
 			}
 		}
 	}
@@ -1076,6 +1180,7 @@ final class AppState: ObservableObject {
 		guard isAsleep else { return }
 		AppLog.info(.app, "System waking up")
 		isAsleep = false
+		automaticRetryAttempt = 0
 		if alwaysRecordEnabled, !isDisplayOrSystemAsleep {
 			startCapture(reason: .wake)
 		}
@@ -1101,9 +1206,11 @@ final class AppState: ObservableObject {
 
 	private func scheduleCaptureRetry() {
 		automaticCaptureRetryTask?.cancel()
+		automaticRetryAttempt += 1
+		let delay = CaptureRetryPolicy.delay(forAttempt: automaticRetryAttempt)
 		automaticCaptureRetryTask = Task { @MainActor [weak self] in
 			guard let self else { return }
-			try? await Task.sleep(nanoseconds: 2_000_000_000)
+			try? await Task.sleep(nanoseconds: UInt64(delay * 1_000_000_000))
 			if Task.isCancelled { return }
 			if self.isDisplayOrSystemAsleep {
 				return
@@ -1213,7 +1320,10 @@ final class AppState: ObservableObject {
 				recordDesktopAudioEnabled: recordDesktopAudioEnabled,
 				captureTargetPromptEnabled: captureTargetPromptEnabled,
 				microphoneDeviceID: selectedMicrophoneDeviceID,
-				outputDirectoryPath: outputDirectoryPath
+				outputDirectoryPath: outputDirectoryPath,
+				videoCodecID: selectedVideoCodec.id,
+				desktopAudioVolume: desktopAudioVolume,
+				microphoneVolume: microphoneVolume
 			)
 		)
 		let settings = analyticsSettingsSnapshot

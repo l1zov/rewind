@@ -42,6 +42,13 @@ struct AppSettings: Codable {
 	var captureTargetPromptEnabled: Bool
 	var microphoneDeviceID: String?
 	var outputDirectoryPath: String?
+	var videoCodecID: String
+	/// 0...1 mix level of desktop audio in saved clips.
+	var desktopAudioVolume: Double
+	/// 0...1 mix level of the microphone in saved clips.
+	var microphoneVolume: Double
+
+	static let audioVolumeRange: ClosedRange<Double> = 0 ... 1
 
 	static let `default` = AppSettings(
 		replayDuration: 30,
@@ -77,7 +84,10 @@ struct AppSettings: Codable {
 		recordDesktopAudioEnabled: true,
 		captureTargetPromptEnabled: true,
 		microphoneDeviceID: nil,
-		outputDirectoryPath: nil
+		outputDirectoryPath: nil,
+		videoCodecID: CaptureVideoCodec.default.id,
+		desktopAudioVolume: 1,
+		microphoneVolume: 1
 	)
 
 	private enum CodingKeys: String, CodingKey {
@@ -119,6 +129,9 @@ struct AppSettings: Codable {
 		case captureTargetPromptEnabled
 		case microphoneDeviceID
 		case outputDirectoryPath
+		case videoCodecID
+		case desktopAudioVolume
+		case microphoneVolume
 	}
 
 	init(
@@ -155,7 +168,10 @@ struct AppSettings: Codable {
 		recordDesktopAudioEnabled: Bool,
 		captureTargetPromptEnabled: Bool,
 		microphoneDeviceID: String?,
-		outputDirectoryPath: String?
+		outputDirectoryPath: String?,
+		videoCodecID: String = CaptureVideoCodec.default.id,
+		desktopAudioVolume: Double = 1,
+		microphoneVolume: Double = 1
 	) {
 		self.replayDuration = replayDuration
 		self.resolutionID = resolutionID
@@ -191,6 +207,9 @@ struct AppSettings: Codable {
 		self.captureTargetPromptEnabled = captureTargetPromptEnabled
 		self.microphoneDeviceID = microphoneDeviceID
 		self.outputDirectoryPath = outputDirectoryPath
+		self.videoCodecID = videoCodecID
+		self.desktopAudioVolume = desktopAudioVolume
+		self.microphoneVolume = microphoneVolume
 	}
 
 	init(from decoder: Decoder) throws {
@@ -255,6 +274,9 @@ struct AppSettings: Codable {
 		captureTargetPromptEnabled = try container.decodeIfPresent(Bool.self, forKey: .captureTargetPromptEnabled) ?? true
 		microphoneDeviceID = try container.decodeIfPresent(String.self, forKey: .microphoneDeviceID)
 		outputDirectoryPath = try container.decodeIfPresent(String.self, forKey: .outputDirectoryPath)
+		videoCodecID = try container.decodeIfPresent(String.self, forKey: .videoCodecID) ?? CaptureVideoCodec.default.id
+		desktopAudioVolume = try container.decodeIfPresent(Double.self, forKey: .desktopAudioVolume) ?? 1
+		microphoneVolume = try container.decodeIfPresent(Double.self, forKey: .microphoneVolume) ?? 1
 	}
 
 	func encode(to encoder: Encoder) throws {
@@ -299,6 +321,10 @@ struct AppSettings: Codable {
 		try container.encode(captureTargetPromptEnabled, forKey: .captureTargetPromptEnabled)
 		try container.encodeIfPresent(microphoneDeviceID, forKey: .microphoneDeviceID)
 		try container.encodeIfPresent(outputDirectoryPath, forKey: .outputDirectoryPath)
+		let codecToStore: String? = videoCodecID == CaptureVideoCodec.default.id ? nil : videoCodecID
+		try container.encodeIfPresent(codecToStore, forKey: .videoCodecID)
+		try container.encode(desktopAudioVolume, forKey: .desktopAudioVolume)
+		try container.encode(microphoneVolume, forKey: .microphoneVolume)
 	}
 
 	var qualityPreset: QualityPreset {
@@ -311,6 +337,10 @@ struct AppSettings: Codable {
 
 	var container: CaptureContainer {
 		CaptureContainer.options.first(where: { $0.id == containerID }) ?? .default
+	}
+
+	var videoCodec: CaptureVideoCodec {
+		CaptureVideoCodec.resolve(id: videoCodecID)
 	}
 
 	var audioCodec: CaptureAudioCodec {
@@ -341,14 +371,13 @@ enum AppSettingsStorage {
 		if let data = UserDefaults.standard.data(forKey: key),
 		   let decoded = try? JSONDecoder().decode(AppSettings.self, from: data)
 		{
-			guard isValid(decoded) else {
-				UserDefaults.standard.removeObject(forKey: key)
-				return .default
-			}
-			if let normalized = try? JSONEncoder().encode(decoded), normalized != data {
+			// A value that no longer exists (e.g. a sound or preset removed in an
+			// update) resets just that field, not the user's whole configuration.
+			let repaired = sanitized(decoded)
+			if let normalized = try? JSONEncoder().encode(repaired), normalized != data {
 				UserDefaults.standard.set(normalized, forKey: key)
 			}
-			return decoded
+			return repaired
 		}
 
 		if UserDefaults.standard.object(forKey: key) != nil {
@@ -359,55 +388,44 @@ enum AppSettingsStorage {
 	}
 
 	static func save(_ settings: AppSettings) {
-		guard isValid(settings),
-		      let data = try? JSONEncoder().encode(settings)
-		else {
+		guard let data = try? JSONEncoder().encode(sanitized(settings)) else {
 			UserDefaults.standard.removeObject(forKey: key)
 			return
 		}
 		UserDefaults.standard.set(data, forKey: key)
 	}
 
-	private static func isValid(_ settings: AppSettings) -> Bool {
-		guard AppSettings.replayDurationRange.contains(settings.replayDuration) else {
-			return false
+	/// Replaces each out-of-range or unknown field with its default and leaves
+	/// every other field untouched.
+	static func sanitized(_ settings: AppSettings) -> AppSettings {
+		let defaults = AppSettings.default
+		var s = settings
+		if !AppSettings.replayDurationRange.contains(s.replayDuration) { s.replayDuration = defaults.replayDuration }
+		if !QualityPreset.presets.contains(where: { $0.id == s.qualityID }) { s.qualityID = defaults.qualityID }
+		if !CaptureFrameRate.options.contains(where: { $0.framesPerSecond == s.frameRate }) { s.frameRate = defaults.frameRate }
+		if !CaptureContainer.options.contains(where: { $0.id == s.containerID }) { s.containerID = defaults.containerID }
+		if !CaptureAudioCodec.options.contains(where: { $0.id == s.audioCodecID }) { s.audioCodecID = defaults.audioCodecID }
+		if !AppSettings.saveFeedbackVolumeRange.contains(s.saveFeedbackVolume) { s.saveFeedbackVolume = defaults.saveFeedbackVolume }
+		if !FeedbackSound.options.contains(where: { $0.id == s.saveFeedbackSoundID }) { s.saveFeedbackSoundID = defaults.saveFeedbackSoundID }
+		if !AppSettings.saveFeedbackVolumeRange.contains(s.recordingStartFeedbackVolume) {
+			s.recordingStartFeedbackVolume = defaults.recordingStartFeedbackVolume
 		}
-		guard QualityPreset.presets.contains(where: { $0.id == settings.qualityID }) else {
-			return false
+		if !FeedbackSound.options.contains(where: { $0.id == s.recordingStartFeedbackSoundID }) {
+			s.recordingStartFeedbackSoundID = defaults.recordingStartFeedbackSoundID
 		}
-		guard CaptureFrameRate.options.contains(where: { $0.framesPerSecond == settings.frameRate }) else {
-			return false
+		if !AppSettings.saveFeedbackVolumeRange.contains(s.recordingEndFeedbackVolume) {
+			s.recordingEndFeedbackVolume = defaults.recordingEndFeedbackVolume
 		}
-		guard CaptureContainer.options.contains(where: { $0.id == settings.containerID }) else {
-			return false
+		if !FeedbackSound.options.contains(where: { $0.id == s.recordingEndFeedbackSoundID }) {
+			s.recordingEndFeedbackSoundID = defaults.recordingEndFeedbackSoundID
 		}
-		guard CaptureAudioCodec.options.contains(where: { $0.id == settings.audioCodecID }) else {
-			return false
+		if !AppSettings.saveFeedbackVolumeRange.contains(s.errorFeedbackVolume) { s.errorFeedbackVolume = defaults.errorFeedbackVolume }
+		if !FeedbackSound.options.contains(where: { $0.id == s.errorFeedbackSoundID }) {
+			s.errorFeedbackSoundID = defaults.errorFeedbackSoundID
 		}
-		guard AppSettings.saveFeedbackVolumeRange.contains(settings.saveFeedbackVolume) else {
-			return false
-		}
-		guard FeedbackSound.options.contains(where: { $0.id == settings.saveFeedbackSoundID }) else {
-			return false
-		}
-		guard AppSettings.saveFeedbackVolumeRange.contains(settings.recordingStartFeedbackVolume) else {
-			return false
-		}
-		guard FeedbackSound.options.contains(where: { $0.id == settings.recordingStartFeedbackSoundID }) else {
-			return false
-		}
-		guard AppSettings.saveFeedbackVolumeRange.contains(settings.recordingEndFeedbackVolume) else {
-			return false
-		}
-		guard FeedbackSound.options.contains(where: { $0.id == settings.recordingEndFeedbackSoundID }) else {
-			return false
-		}
-		guard AppSettings.saveFeedbackVolumeRange.contains(settings.errorFeedbackVolume) else {
-			return false
-		}
-		guard FeedbackSound.options.contains(where: { $0.id == settings.errorFeedbackSoundID }) else {
-			return false
-		}
-		return true
+		if !CaptureVideoCodec.options.contains(where: { $0.id == s.videoCodecID }) { s.videoCodecID = defaults.videoCodecID }
+		if !AppSettings.audioVolumeRange.contains(s.desktopAudioVolume) { s.desktopAudioVolume = defaults.desktopAudioVolume }
+		if !AppSettings.audioVolumeRange.contains(s.microphoneVolume) { s.microphoneVolume = defaults.microphoneVolume }
+		return s
 	}
 }

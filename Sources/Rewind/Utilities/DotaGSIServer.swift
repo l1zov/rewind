@@ -21,6 +21,19 @@ final class DotaGSIServer: @unchecked Sendable {
 	/// `uri` written into the config file by `DotaGSIConfigInstaller`.
 	static let defaultPort: UInt16 = 39285
 
+	/// Upper bound on a GSI request (headers + body). Real payloads are a few
+	/// KB; anything larger is a malformed or hostile client and is dropped
+	/// instead of letting it grow the receive buffer without limit.
+	static let maxRequestBytes = 1_048_576
+
+	/// Listener parameters pinned to the loopback interface so the server is
+	/// only reachable from this machine, as the Dota GSI config expects.
+	static func listenerParameters() -> NWParameters {
+		let parameters = NWParameters.tcp
+		parameters.requiredInterfaceType = .loopback
+		return parameters
+	}
+
 	private let port: NWEndpoint.Port
 	private let authToken: String?
 	private let staleThreshold: TimeInterval
@@ -34,8 +47,8 @@ final class DotaGSIServer: @unchecked Sendable {
 	///   - port: local TCP port to listen on; must match the `uri` written
 	///     into the GSI config file by `DotaGSIConfigInstaller`.
 	///   - authToken: when set, payloads whose `auth.token` field doesn't
-	///     match are ignored (defense in depth; this only ever listens on
-	///     127.0.0.1 so the token isn't protecting against a network attacker).
+	///     match are ignored (defense in depth; the listener is restricted to
+	///     the loopback interface, see `listenerParameters()`).
 	///   - staleThreshold: `currentState()` returns nil once this long has
 	///     passed without a new payload (GSI sends a heartbeat periodically
 	///     while the game runs, so a gap this long means the match/game ended).
@@ -49,7 +62,7 @@ final class DotaGSIServer: @unchecked Sendable {
 	func start() {
 		queue.async { [weak self] in
 			guard let self, self.listener == nil else { return }
-			guard let listener = try? NWListener(using: .tcp, on: self.port) else {
+			guard let listener = try? NWListener(using: Self.listenerParameters(), on: self.port) else {
 				AppLog.error(.app, "DotaGSIServer failed to bind port \(self.port)")
 				return
 			}
@@ -98,7 +111,7 @@ final class DotaGSIServer: @unchecked Sendable {
 				self.respondOK(on: connection)
 				return
 			}
-			if isComplete || error != nil {
+			if isComplete || error != nil || buffer.count > Self.maxRequestBytes {
 				connection.cancel()
 				return
 			}
@@ -141,7 +154,12 @@ final class DotaGSIServer: @unchecked Sendable {
 			let parts = line.split(separator: ":", maxSplits: 1)
 			guard parts.count == 2, parts[0].trimmingCharacters(in: .whitespaces).lowercased() == "content-length"
 			else { continue }
-			return Int(parts[1].trimmingCharacters(in: .whitespaces))
+			// A negative or absurdly large length is malformed; treat it as
+			// absent so `splitCompleteRequest` never slices with a bad count.
+			guard let length = Int(parts[1].trimmingCharacters(in: .whitespaces)),
+			      (0...maxRequestBytes).contains(length)
+			else { return nil }
+			return length
 		}
 		return nil
 	}

@@ -11,12 +11,16 @@ actor GameArtResolver {
 
 	func artURL(for name: String) async -> String? {
 		if let cached = cache[name] { return cached }
-		let resolved = await lookup(name)
-		cache[name] = resolved
-		return resolved
+		// A nil outcome means the lookup itself failed (offline, timeout, bad
+		// response). Only a completed search is cached, so one flaky request
+		// doesn't leave a game without art until the next launch.
+		guard let outcome = await lookup(name) else { return nil }
+		cache[name] = outcome
+		return outcome
 	}
 
-	private func lookup(_ name: String) async -> String? {
+	/// `nil` = lookup failed; `.some(nil)` = searched, no matching game.
+	private func lookup(_ name: String) async -> String?? {
 		guard let query = name.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed),
 		      let url = URL(string: "https://store.steampowered.com/api/storesearch/?term=\(query)&cc=us&l=en"),
 		      let (data, _) = try? await session.data(from: url),
@@ -26,10 +30,10 @@ actor GameArtResolver {
 		for item in items {
 			guard let appID = item["id"] as? Int, let title = item["name"] as? String else { continue }
 			if Self.matches(query: name, result: title) {
-				return "https://cdn.cloudflare.steamstatic.com/steam/apps/\(appID)/header.jpg"
+				return .some("https://cdn.cloudflare.steamstatic.com/steam/apps/\(appID)/header.jpg")
 			}
 		}
-		return nil
+		return .some(nil)
 	}
 
 	static func matches(query: String, result: String) -> Bool {

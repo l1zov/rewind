@@ -305,13 +305,13 @@ struct TrimEditorView: View {
 			await exportSession.export()
 			if exportSession.status == .completed {
 				do {
-					try? FileManager.default.removeItem(at: clip.url)
-					try FileManager.default.moveItem(at: tempURL, to: clip.url)
+					try ClipFileReplacer.replace(at: clip.url, with: tempURL)
 					// The clip was rewritten in place, so its cached first frame
 					// is no longer the frame it starts on.
 					ClipThumbnailCache.shared.invalidate(clipID: clip.id)
 					appState.trackClipAction(action: "trim")
 				} catch {
+					try? FileManager.default.removeItem(at: tempURL)
 					print("Error saving trimmed clip: \(error)")
 					appState.trackClipAction(action: "trim", result: "failed")
 				}

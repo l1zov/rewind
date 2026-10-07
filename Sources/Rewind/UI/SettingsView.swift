@@ -216,6 +216,19 @@ private struct CaptureSettingsPane: View {
 					HelpLabel("Frame rate", help: "Higher frame rates produce smoother video but use more system resources.")
 				}
 				.pickerStyle(.menu)
+
+				if CaptureVideoCodec.options.count > 1 {
+					Picker(selection: $appState.selectedVideoCodec) {
+						ForEach(CaptureVideoCodec.options) { codec in
+							Text(defaultTaggedLabel(codec.label, isDefault: codec.isDefault)).tag(codec)
+						}
+					} label: {
+						HelpLabel(
+							"Video codec",
+							help: "H.264 plays everywhere, including Discord's inline preview. HEVC makes smaller files, but Discord and many other apps can't preview it.")
+					}
+					.pickerStyle(.menu)
+				}
 			}
 			.disabled(settingsLocked)
 
@@ -226,6 +239,13 @@ private struct CaptureSettingsPane: View {
 						.toggleStyle(.switch)
 				} label: {
 					HelpLabel("Record desktop audio", help: "Captures system/app audio playing on your Mac.")
+				}
+
+				if appState.recordDesktopAudioEnabled {
+					audioVolumeRow(
+						title: "Desktop volume",
+						help: "How loud desktop audio is in saved clips.",
+						value: $appState.desktopAudioVolume)
 				}
 
 				LabeledContent {
@@ -253,6 +273,13 @@ private struct CaptureSettingsPane: View {
 					}
 					.pickerStyle(.menu)
 					.disabled(!appState.recordMicrophoneEnabled)
+
+					if appState.recordMicrophoneEnabled {
+						audioVolumeRow(
+							title: "Microphone volume",
+							help: "How loud your microphone is in saved clips.",
+							value: $appState.microphoneVolume)
+					}
 				}
 			}
 			.disabled(settingsLocked)
@@ -291,6 +318,21 @@ private struct CaptureSettingsPane: View {
 			.disabled(settingsLocked)
 		}
 		.formStyle(.grouped)
+	}
+
+	private func audioVolumeRow(title: String, help: String, value: Binding<Double>) -> some View {
+		LabeledContent {
+			HStack(spacing: 8) {
+				Slider(value: value, in: AppSettings.audioVolumeRange)
+					.frame(width: 150)
+				Text("\(Int((value.wrappedValue * 100).rounded()))%")
+					.monospacedDigit()
+					.foregroundStyle(.secondary)
+					.frame(width: 44, alignment: .trailing)
+			}
+		} label: {
+			HelpLabel(title, help: help)
+		}
 	}
 
 	@ViewBuilder
