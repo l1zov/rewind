@@ -11,6 +11,7 @@ let package = Package(
 		.package(url: "https://github.com/sparkle-project/Sparkle", from: "2.6.2"),
 		.package(url: "https://github.com/CocoaLumberjack/CocoaLumberjack", exact: "3.8.5"),
 		.package(url: "https://github.com/sindresorhus/Defaults", from: "8.2.0"),
+		.package(url: "https://github.com/rampatra/TourKit", from: "1.0.0"),
 	],
 	targets: [
 		.target(
@@ -23,6 +24,7 @@ let package = Package(
 				.product(name: "Sparkle", package: "Sparkle"),
 				.product(name: "CocoaLumberjackSwift", package: "CocoaLumberjack"),
 				.product(name: "Defaults", package: "Defaults"),
+				.product(name: "TourKit", package: "TourKit"),
 				"RewindObjCSupport",
 			],
 			path: "Sources/Rewind",
