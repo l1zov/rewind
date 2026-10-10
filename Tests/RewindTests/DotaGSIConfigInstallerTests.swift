@@ -59,4 +59,12 @@ final class DotaGSIConfigInstallerTests: XCTestCase {
 		let reinstalled = DotaGSIConfigInstaller.install(port: 39285, authToken: "token", steamLibraries: [tempDir])
 		XCTAssertEqual(reinstalled, installed)
 	}
+
+	func testConfigAsksDotaForUpdatesAtAGentleRate() {
+		let contents = DotaGSIConfigInstaller.configContents(port: 39285, authToken: "t")
+		// Rewind only needs the hero and game state, checked every few seconds; the
+		// old 0.1 s values made Dota POST up to ten times a second.
+		XCTAssertTrue(contents.contains("\"buffer\"        \"2.0\""), contents)
+		XCTAssertTrue(contents.contains("\"throttle\"      \"5.0\""), contents)
+	}
 }

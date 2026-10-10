@@ -9,10 +9,24 @@ final class StorageMonitor {
         static let refreshIntervalNanos: UInt64 = 30 * 1_000_000_000
     }
 
+    /// Free bytes on the volume holding the clip output folder and on the volume
+    /// holding the live recording segments (nil when unknown).
+    struct Sample: Sendable {
+        var output: Int64?
+        var scratch: Int64?
+    }
+
+    private let sampler: @Sendable () -> Sample
     private let onChange: @MainActor (String?) -> Void
     private var task: Task<Void, Never>?
+    private var hasReported = false
+    private var lastWarning: String?
 
-    init(onChange: @escaping @MainActor (String?) -> Void) {
+    init(
+        sampler: @escaping @Sendable () -> Sample = StorageMonitor.liveSample,
+        onChange: @escaping @MainActor (String?) -> Void
+    ) {
+        self.sampler = sampler
         self.onChange = onChange
     }
 
@@ -32,15 +46,41 @@ final class StorageMonitor {
         }
     }
 
+    /// Volume capacity queries go through a system service and take ~40 ms each, so
+    /// they run off the main thread. The result is only published when it changes:
+    /// every publish re-renders the menu, and most checks find nothing new.
     func refresh() {
-        onChange(currentWarning())
+        let sampler = sampler
+        Task.detached(priority: .utility) { [weak self] in
+            let sample = sampler()
+            let warning = Self.warning(outputFreeBytes: sample.output, scratchFreeBytes: sample.scratch)
+            await self?.apply(warning)
+        }
     }
 
-    private func currentWarning() -> String? {
-        Self.warning(
-            outputFreeBytes: Self.availableBytes(forFolder: ClipStorageLocation.current()),
-            scratchFreeBytes: Self.availableBytes(forFolder: FileManager.default.temporaryDirectory)
-        )
+    private func apply(_ warning: String?) {
+        guard !hasReported || warning != lastWarning else { return }
+        hasReported = true
+        lastWarning = warning
+        onChange(warning)
+    }
+
+    nonisolated static func liveSample() -> Sample {
+        let output = ClipStorageLocation.current()
+        let scratch = FileManager.default.temporaryDirectory
+        let outputFree = availableBytes(forFolder: output)
+        // Usually the same volume: ask once instead of twice.
+        let scratchFree = sameVolume(output, scratch) ? outputFree : availableBytes(forFolder: scratch)
+        return Sample(output: outputFree, scratch: scratchFree)
+    }
+
+    nonisolated static func sameVolume(_ a: URL, _ b: URL) -> Bool {
+        func identifier(_ url: URL) -> NSObject? {
+            let existing = nearestExistingDirectory(url)
+            return (try? existing.resourceValues(forKeys: [.volumeIdentifierKey]))?.volumeIdentifier as? NSObject
+        }
+        guard let first = identifier(a), let second = identifier(b) else { return false }
+        return first.isEqual(second)
     }
 
     /// Clips are exported to the output folder, but the rolling live segments (up

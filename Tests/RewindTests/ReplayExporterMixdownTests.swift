@@ -112,6 +112,9 @@ final class ReplayExporterMixdownTests: XCTestCase {
 		for frame in 0 ..< Int(fps) * seconds {
 			let pts = CMTime(value: CMTimeValue(frame), timescale: fps)
 			if let video = videoBuffer(pts: pts, size: size) { writer.appendVideo(video) }
+			// Pace the feed like real capture: pushing frames in a tight loop makes the
+			// encoder shed frames, so how many survive would depend on machine load.
+			try await Task.sleep(nanoseconds: 4_000_000)
 			// keep audio roughly in step with video
 			let audioTarget = min(totalAudioFrames, Int(Double(frame + 1) / Double(fps) * sampleRate))
 			while audioFrame + framesPerBuffer <= audioTarget {
@@ -339,8 +342,15 @@ final class ReplayExporterMixdownTests: XCTestCase {
 		reader.add(out)
 		XCTAssertTrue(reader.startReading())
 		var frames = 0
-		while out.copyNextSampleBuffer() != nil { frames += 1 }
+		var lastPTS = 0.0
+		while let sample = out.copyNextSampleBuffer() {
+			frames += 1
+			lastPTS = CMSampleBufferGetPresentationTimeStamp(sample).seconds
+		}
 		XCTAssertEqual(reader.status, .completed, "\(String(describing: reader.error))")
-		XCTAssertGreaterThan(frames, Int(fps) * 7)
+		// The encoder may shed some frames under load (so no exact count), but decoding must
+		// reach the end of the second, differently sized segment.
+		XCTAssertGreaterThan(frames, 30)
+		XCTAssertGreaterThan(lastPTS, 7, "Frames from the second segment are missing")
 	}
 }

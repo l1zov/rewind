@@ -3,6 +3,9 @@ import CoreMedia
 /// Pure timing transforms applied to capture sample buffers before they are
 /// handed to the asset writer.
 enum SampleBufferTiming {
+    /// How far (in frames) a re-stamped video frame may trail its real capture time.
+    static let maxLagFrames = 1.5
+
     /// Shifts a video sample's PTS/DTS by `offset` and fills in a default
     /// duration where the source left it invalid.
     static func adjustedVideo(_ sampleBuffer: CMSampleBuffer, offset: CMTime, defaultFrameRate: Int)
@@ -37,13 +40,24 @@ enum SampleBufferTiming {
         return out ?? sampleBuffer
     }
 
+    /// Snaps a video frame onto the constant-rate grid of `defaultFrameRate` while
+    /// keeping the timeline faithful to real time.
+    ///
+    /// Frames must be strictly increasing, so a frame that lands on an
+    /// already-used slot is pushed one frame later. That is fine for the odd
+    /// jitter, but if the source keeps delivering faster than the configured rate
+    /// every frame would be pushed further and further, stretching the video
+    /// (slow motion). Once a frame would trail real time by more than
+    /// `maxLagFrames`, it is dropped (returns nil) instead.
+    ///
+    /// - Returns: the re-stamped sample, or nil when the frame should be dropped.
     static func quantizedVideo(
         _ sampleBuffer: CMSampleBuffer,
         offset: CMTime,
         sessionStartPTS: CMTime,
         lastVideoPTS: CMTime,
         defaultFrameRate: Int
-    ) -> CMSampleBuffer {
+    ) -> CMSampleBuffer? {
         let adjusted = adjustedVideo(sampleBuffer, offset: offset, defaultFrameRate: defaultFrameRate)
         guard sessionStartPTS.isValid, defaultFrameRate > 0 else { return adjusted }
 
@@ -63,6 +77,8 @@ enum SampleBufferTiming {
         if lastVideoPTS.isValid {
             let minNextPTS = CMTimeAdd(lastVideoPTS, frameDuration)
             if targetPTS <= lastVideoPTS {
+                let lag = (minNextPTS - rawPTS).seconds
+                guard lag <= maxLagFrames * frameDuration.seconds else { return nil }
                 targetPTS = minNextPTS
             }
         }

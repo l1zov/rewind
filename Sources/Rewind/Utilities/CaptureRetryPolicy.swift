@@ -7,8 +7,7 @@ enum CaptureRetryPolicy {
 
 	/// 2s, 4s, 8s ... capped at 60s. `attempt` counts consecutive failures, from 1.
 	static func delay(forAttempt attempt: Int) -> TimeInterval {
-		let exponent = min(max(attempt, 1) - 1, 10)
-		return min(baseDelay * pow(2, Double(exponent)), maxDelay)
+		RetryBackoff.delay(forAttempt: attempt, base: baseDelay, cap: maxDelay)
 	}
 
 	/// A missing Screen Recording grant can't fix itself while the app is running

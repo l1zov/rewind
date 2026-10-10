@@ -113,6 +113,7 @@ final class ReplayWriter: @unchecked Sendable {
     var missingAdaptorDrops = 0
     var missingAudioInputLogged = false
     var videoBackpressureDrops = 0
+    var videoTimingDrops = 0
 
     init(queue: DispatchQueue) {
         self.queue = queue
@@ -300,6 +301,7 @@ final class ReplayWriter: @unchecked Sendable {
         audioFormatDescription = nil
         audioASBD = nil
         videoBackpressureDrops = 0
+        videoTimingDrops = 0
         pendingVideo.removeAll()
         pendingAudio.removeAll()
         pendingMic.removeAll()

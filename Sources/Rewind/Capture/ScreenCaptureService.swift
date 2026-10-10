@@ -304,35 +304,39 @@ final class ScreenCaptureService: NSObject, SCStreamOutput, @unchecked Sendable 
 	}
 
 	private func isCompleteVideoFrame(_ sampleBuffer: CMSampleBuffer) -> Bool {
-		guard
-			let attachments = CMSampleBufferGetSampleAttachmentsArray(
-				sampleBuffer, createIfNecessary: false
+		let status = Self.frameStatus(of: sampleBuffer)
+		if Self.isDeliverable(status: status) { return true }
+		if !loggedNonCompleteFrame, let status {
+			AppLog.debug(
+				.capture, "ScreenCaptureService: dropping non-complete frame status:",
+				status.rawValue
 			)
-			as? [[SCStreamFrameInfo: Any]],
-			let first = attachments.first,
-			let statusValue = first[.status]
-		else {
-			return true
+			loggedNonCompleteFrame = true
 		}
-		let status: SCFrameStatus?
-		if let typed = statusValue as? SCFrameStatus {
-			status = typed
-		} else if let number = statusValue as? NSNumber {
-			status = SCFrameStatus(rawValue: number.intValue)
-		} else {
-			status = nil
-		}
-		if let status, status != .complete, status != .idle {
-			if !loggedNonCompleteFrame {
-				AppLog.debug(
-					.capture, "ScreenCaptureService: dropping non-complete frame status:",
-					status.rawValue
-				)
-				loggedNonCompleteFrame = true
-			}
-			return false
-		}
-		return true
+		return false
+	}
+
+	/// Reads just the frame-status attachment. This runs for every captured frame
+	/// (up to 120 times a second), so it avoids bridging the whole attachment
+	/// dictionary into Swift collections, which profiled as the largest per-frame
+	/// cost in Rewind's own code.
+	static func frameStatus(of sampleBuffer: CMSampleBuffer) -> SCFrameStatus? {
+		guard
+			let attachments = CMSampleBufferGetSampleAttachmentsArray(sampleBuffer, createIfNecessary: false),
+			CFArrayGetCount(attachments) > 0
+		else { return nil }
+		let dictionary = unsafeBitCast(CFArrayGetValueAtIndex(attachments, 0), to: CFDictionary.self)
+		let key = Unmanaged.passUnretained(SCStreamFrameInfo.status.rawValue as CFString).toOpaque()
+		guard let raw = CFDictionaryGetValue(dictionary, key) else { return nil }
+		let value = Unmanaged<AnyObject>.fromOpaque(raw).takeUnretainedValue()
+		guard let number = value as? NSNumber else { return nil }
+		return SCFrameStatus(rawValue: number.intValue)
+	}
+
+	/// Frames without a status, and `.complete` / `.idle` ones, are encoded.
+	static func isDeliverable(status: SCFrameStatus?) -> Bool {
+		guard let status else { return true }
+		return status == .complete || status == .idle
 	}
 }
 

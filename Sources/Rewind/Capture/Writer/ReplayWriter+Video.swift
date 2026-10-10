@@ -151,13 +151,23 @@ extension ReplayWriter {
     func appendVideoSample(
         _ sampleBuffer: CMSampleBuffer, writer: AVAssetWriter, videoInput: AVAssetWriterInput
     ) {
-        let adjustedSample = SampleBufferTiming.quantizedVideo(
+        guard let adjustedSample = SampleBufferTiming.quantizedVideo(
             sampleBuffer,
             offset: videoPTSOffset,
             sessionStartPTS: sessionStartPTS,
             lastVideoPTS: lastVideoPTS,
             defaultFrameRate: configuredFrameRate
-        )
+        ) else {
+            // The source is delivering faster than the configured frame rate: drop the
+            // surplus frame rather than let the video timeline run behind real time.
+            videoTimingDrops += 1
+            if videoTimingDrops == 1 || videoTimingDrops % Constants.backpressureLogInterval == 0 {
+                AppLog.debug(
+                    .writer, "ReplayWriter.appendVideo dropped surplus frame (source faster than",
+                    configuredFrameRate, "fps). count:", videoTimingDrops)
+            }
+            return
+        }
         let pts = CMSampleBufferGetPresentationTimeStamp(adjustedSample)
 
         if pts < sessionStartPTS {

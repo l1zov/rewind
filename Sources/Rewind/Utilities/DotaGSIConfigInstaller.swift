@@ -58,8 +58,9 @@ enum DotaGSIConfigInstaller {
 		return installed
 	}
 
-	/// The VDF/KeyValues config Dota 2's client expects. `buffer`/`throttle`
-	/// kept low so presence updates feel responsive; `heartbeat` lets
+	/// The VDF/KeyValues config Dota 2's client expects. `buffer`/`throttle` are a
+	/// few seconds: Rewind only reads the hero and game state (polled every 10 s), and
+	/// 0.1 s made Dota POST up to ten times a second; `heartbeat` lets
 	/// `DotaGSIServer` tell a live-but-quiet match apart from a closed one.
 	static func configContents(port: UInt16, authToken: String) -> String {
 		"""
@@ -67,8 +68,8 @@ enum DotaGSIConfigInstaller {
 		{
 			"uri"           "http://127.0.0.1:\(port)/"
 			"timeout"       "5.0"
-			"buffer"        "0.1"
-			"throttle"      "0.1"
+			"buffer"        "2.0"
+			"throttle"      "5.0"
 			"heartbeat"     "30.0"
 			"data"
 			{

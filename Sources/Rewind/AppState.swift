@@ -510,6 +510,8 @@ final class AppState: ObservableObject {
 	private var preferredResolutionID: String?
 	private var isRestoringSettings = false
 	private var skipMicrophonePermissionReset = false
+	/// Whether the last Discord presence publish succeeded (i.e. Discord is reachable).
+	private var discordPresenceConnected = false
 	private var cancellables = Set<AnyCancellable>()
 
 	init(
@@ -1053,11 +1055,17 @@ final class AppState: ObservableObject {
 	/// While recording, periodically look up the game being played and fold it
 	/// into the Discord presence so it reads "Clipping <game>".
 	private func startGamePresenceUpdates() {
+		// (Only resolves the running game once Discord has accepted a presence,
+		// since enumerating every running app is wasted work when nothing can show it.)
 		gamePresenceTask?.cancel()
 		gamePresenceTask = Task { @MainActor [weak self] in
 			while !Task.isCancelled {
 				guard let self, self.isCapturing, self.discordRPCEnabled,
 				      self.discordActivityState.isRecording else { return }
+				guard self.discordPresenceConnected else {
+					try? await Task.sleep(nanoseconds: 10_000_000_000)
+					continue
+				}
 				// Respect the privacy toggle: when game sharing is off, show only a
 				// generic recording status instead of resolving the running game.
 				let presence = self.shareGamePresenceEnabled
@@ -1083,11 +1091,15 @@ final class AppState: ObservableObject {
 		discordPresenceRetryTask = Task { @MainActor [weak self] in
 			guard let self else { return }
 
+			var failedAttempts = 0
 			while !Task.isCancelled {
 				guard self.discordRPCEnabled, self.discordActivityState == state else { return }
 				let published = await self.discordRPCClient.publish(state: state)
+				self.discordPresenceConnected = published
 				if published { return }
-				try? await Task.sleep(nanoseconds: 2_000_000_000)
+				failedAttempts += 1
+				let delay = DiscordPresenceRetry.delay(forAttempt: failedAttempts)
+				try? await Task.sleep(nanoseconds: UInt64(delay * 1_000_000_000))
 			}
 		}
 	}

@@ -325,10 +325,9 @@ actor CaptureManager {
     }
 
     private func makeSegmentURL() -> URL {
-        let folder = FileManager.default.temporaryDirectory
-            .appendingPathComponent("Rewind", isDirectory: true)
+        let folder = LiveSegmentCleanup.defaultFolder
         try? FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
-        return folder.appendingPathComponent("Rewind_live_\(UUID().uuidString).mov")
+        return folder.appendingPathComponent("\(LiveSegmentCleanup.prefix)\(UUID().uuidString).mov")
     }
 
     private var captureAudioSettings: [String: Any] {
@@ -492,15 +491,6 @@ actor CaptureManager {
     }
 
     private func cleanupTemporaryLiveSegments() {
-        let folder = FileManager.default.temporaryDirectory
-            .appendingPathComponent("Rewind", isDirectory: true)
-        let fm = FileManager.default
-        guard let urls = try? fm.contentsOfDirectory(at: folder, includingPropertiesForKeys: nil)
-        else {
-            return
-        }
-        for url in urls where url.lastPathComponent.hasPrefix("Rewind_live_") {
-            try? fm.removeItem(at: url)
-        }
+        LiveSegmentCleanup.removeAll()
     }
 }

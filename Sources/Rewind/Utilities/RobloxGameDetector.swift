@@ -6,11 +6,21 @@ actor RobloxGameDetector {
 	private var iconCache: [String: String] = [:]
 	private let session: URLSession
 	private let staleThreshold: TimeInterval
+	private let logsDirectoryOverride: URL?
+	private let logTail = RobloxLogTail()
+	/// Lookups that just failed are not retried for this long (they used to hit
+	/// the network again on every 10 s poll).
+	private let failureBackoff: TimeInterval
+	private var failedLookupsUntil: [String: Date] = [:]
 
 	init(session: URLSession = URLSession(configuration: .ephemeral),
-	     staleThreshold: TimeInterval = 120) {
+	     staleThreshold: TimeInterval = 120,
+	     logsDirectory: URL? = nil,
+	     failureBackoff: TimeInterval = 60) {
 		self.session = session
 		self.staleThreshold = staleThreshold
+		logsDirectoryOverride = logsDirectory
+		self.failureBackoff = failureBackoff
 	}
 	
 	struct Session: Equatable {
@@ -38,18 +48,21 @@ actor RobloxGameDetector {
 	// - Log parsing ---
 
 	private func logsDirectory() -> URL {
-		FileManager.default.homeDirectoryForCurrentUser
+		logsDirectoryOverride ?? FileManager.default.homeDirectoryForCurrentUser
 			.appendingPathComponent("Library/Logs/Roblox", isDirectory: true)
 	}
 
 	private func currentSession() -> Session? {
 		guard let (logURL, modified) = newestLog() else { return nil }
 		guard Date().timeIntervalSince(modified) < staleThreshold else { return nil }
-		guard let content = try? String(contentsOf: logURL, encoding: .utf8) else { return nil }
-		return lastSession(in: content)
+		return logTail.latestSession(in: logURL)
 	}
 
 	func lastSession(in log: String) -> Session? {
+		Self.parseSession(in: log)
+	}
+
+	static func parseSession(in log: String) -> Session? {
 		if let regex = try? NSRegularExpression(pattern: #"Joining game '([^']*)' place (\d+)"#) {
 			let range = NSRange(log.startIndex..., in: log)
 			var session: Session?
@@ -63,10 +76,21 @@ actor RobloxGameDetector {
 			if let session { return session }
 		}
 		
-		if let placeID = lastPlaceID(in: log) {
+		if let placeID = lastPlaceID(inLog: log) {
 			return Session(placeID: placeID, jobID: nil)
 		}
 		return nil
+	}
+
+	private func isBackedOff(_ key: String) -> Bool {
+		guard let until = failedLookupsUntil[key] else { return false }
+		if until > Date() { return true }
+		failedLookupsUntil[key] = nil
+		return false
+	}
+
+	private func markFailed(_ key: String) {
+		failedLookupsUntil[key] = Date().addingTimeInterval(failureBackoff)
 	}
 
 	private func newestLog() -> (URL, Date)? {
@@ -88,6 +112,10 @@ actor RobloxGameDetector {
 	}
 
 	func lastPlaceID(in log: String) -> String? {
+		Self.lastPlaceID(inLog: log)
+	}
+
+	static func lastPlaceID(inLog log: String) -> String? {
 		let patterns = [
 			#"Joining game '[^']*' place (\d+)"#,
 			#"[Pp]lace[Ii]d[:\s\"=]+(\d+)"#,
@@ -110,31 +138,43 @@ actor RobloxGameDetector {
 
 	private func universeID(forPlace placeID: String) async -> String? {
 		if let cached = universeIDCache[placeID] { return cached }
+		let failureKey = "universe:\(placeID)"
+		if isBackedOff(failureKey) { return nil }
 		let urlString = "https://apis.roblox.com/universes/v1/places/\(placeID)/universe"
 		guard let url = URL(string: urlString),
 		      let (data, _) = try? await session.data(from: url),
 		      let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
-		else { return nil }
+		else {
+			markFailed(failureKey)
+			return nil
+		}
 		let id = (json["universeId"] as? Int).map(String.init) ?? json["universeId"] as? String
-		if let id { universeIDCache[placeID] = id }
+		if let id { universeIDCache[placeID] = id } else { markFailed(failureKey) }
 		return id
 	}
 
 	private func gameName(forUniverse universeID: String) async -> String? {
 		if let cached = nameCache[universeID] { return cached }
+		let failureKey = "name:\(universeID)"
+		if isBackedOff(failureKey) { return nil }
 		let urlString = "https://games.roblox.com/v1/games?universeIds=\(universeID)"
 		guard let url = URL(string: urlString),
 		      let (data, _) = try? await session.data(from: url),
 		      let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
 		      let entries = json["data"] as? [[String: Any]],
 		      let name = entries.first?["name"] as? String
-		else { return nil }
+		else {
+			markFailed(failureKey)
+			return nil
+		}
 		nameCache[universeID] = name
 		return name
 	}
 
 	private func gameIcon(forUniverse universeID: String) async -> String? {
 		if let cached = iconCache[universeID] { return cached }
+		let failureKey = "icon:\(universeID)"
+		if isBackedOff(failureKey) { return nil }
 		let urlString = "https://thumbnails.roblox.com/v1/games/icons?universeIds=\(universeID)&size=512x512&format=Png&isCircular=false"
 		guard let url = URL(string: urlString),
 		      let (data, _) = try? await session.data(from: url),
@@ -143,7 +183,10 @@ actor RobloxGameDetector {
 		      let first = entries.first,
 		      first["state"] as? String == "Completed",
 		      let imageURL = first["imageUrl"] as? String
-		else { return nil }
+		else {
+			markFailed(failureKey)
+			return nil
+		}
 		iconCache[universeID] = imageURL
 		return imageURL
 	}
