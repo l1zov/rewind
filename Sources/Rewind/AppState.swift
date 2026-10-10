@@ -477,7 +477,6 @@ final class AppState: ObservableObject {
 	private var storageMonitor: StorageMonitor!
 	private var discordActivityState: DiscordActivityState = .idle
 	private var discordPresenceRetryTask: Task<Void, Never>?
-	private let dotaGSIServer: DotaGSIServer?
 	private let gameDetector: GamePresenceDetector
 	private var gamePresenceTask: Task<Void, Never>?
 	private var automaticCaptureRetryTask: Task<Void, Never>?
@@ -518,15 +517,7 @@ final class AppState: ObservableObject {
 		self.discordRPCClient = discordRPCClient
 		self.analytics = analytics
 		self.hotkeyManager = hotkeyManager
-
-		let dotaGSIAuthToken = DotaGSIAuthToken.current()
-		let dotaGSIServer = DotaGSIServer(port: DotaGSIServer.defaultPort, authToken: dotaGSIAuthToken)
-		self.dotaGSIServer = dotaGSIServer
-		gameDetector = GamePresenceDetector(dotaGSI: dotaGSIServer)
-		dotaGSIServer?.start()
-		Task.detached(priority: .utility) {
-			DotaGSIConfigInstaller.install(port: DotaGSIServer.defaultPort, authToken: dotaGSIAuthToken)
-		}
+		gameDetector = GamePresenceDetector()
 
 		clipLibrary.objectWillChange.sink { [weak self] _ in
 			self?.objectWillChange.send()
