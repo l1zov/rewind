@@ -6,8 +6,7 @@ Rewind is a free, open-source macOS app for instantly clipping highlights of you
 
 - **Instant Replay Capture:** Save the last X seconds of your gameplay instantly (customizable duration).
 - **Always Record Mode:** Optionally record continuously so you never miss a moment.
-- **Customizable Quality:** Adjust resolution, frame rate, video codec, audio codec and container format to suit your needs.
-- **Discord-friendly clips:** Clips default to H.264 + AAC in a stream-ready MP4, so they preview inline in Discord. Switch to HEVC in **Settings -> Video codec** for smaller files (Discord can't preview HEVC).
+- **Customizable Quality:** Adjust resolution, frame rate, audio codec and container format to suit your needs.
 - **Microphone and desktop audio in one track:** Saved clips mix your mic and desktop audio into a single audio track so everyone hears both, with separate **Desktop volume** and **Microphone volume** sliders in Settings.
 - **Global Hotkeys:** Configure custom hotkeys for starting/stopping recording and saving replays.
 - **Audio Feedback:** Hear customizable sound cues when a recording starts, stops, saves or if an error occurs.

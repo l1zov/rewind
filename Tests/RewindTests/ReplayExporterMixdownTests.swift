@@ -292,7 +292,12 @@ final class ReplayExporterMixdownTests: XCTestCase {
 
 		let formats = try await video.load(.formatDescriptions)
 		let format = try XCTUnwrap(formats.first)
-		XCTAssertEqual(CMFormatDescriptionGetMediaSubType(format), kCMVideoCodecType_H264, "Video should be copied, not re-encoded")
+		#if arch(x86_64)
+		let expectedCodec = kCMVideoCodecType_H264
+		#else
+		let expectedCodec = kCMVideoCodecType_HEVC
+		#endif
+		XCTAssertEqual(CMFormatDescriptionGetMediaSubType(format), expectedCodec, "Video should be copied, not re-encoded")
 	}
 
 	func testMixdownAcrossSeveralSegments() async throws {

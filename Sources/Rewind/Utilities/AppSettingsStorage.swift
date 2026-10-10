@@ -42,7 +42,6 @@ struct AppSettings: Codable {
 	var captureTargetPromptEnabled: Bool
 	var microphoneDeviceID: String?
 	var outputDirectoryPath: String?
-	var videoCodecID: String
 	/// 0...1 mix level of desktop audio in saved clips.
 	var desktopAudioVolume: Double
 	/// 0...1 mix level of the microphone in saved clips.
@@ -85,7 +84,6 @@ struct AppSettings: Codable {
 		captureTargetPromptEnabled: true,
 		microphoneDeviceID: nil,
 		outputDirectoryPath: nil,
-		videoCodecID: CaptureVideoCodec.default.id,
 		desktopAudioVolume: 1,
 		microphoneVolume: 1
 	)
@@ -129,7 +127,6 @@ struct AppSettings: Codable {
 		case captureTargetPromptEnabled
 		case microphoneDeviceID
 		case outputDirectoryPath
-		case videoCodecID
 		case desktopAudioVolume
 		case microphoneVolume
 	}
@@ -169,7 +166,6 @@ struct AppSettings: Codable {
 		captureTargetPromptEnabled: Bool,
 		microphoneDeviceID: String?,
 		outputDirectoryPath: String?,
-		videoCodecID: String = CaptureVideoCodec.default.id,
 		desktopAudioVolume: Double = 1,
 		microphoneVolume: Double = 1
 	) {
@@ -207,7 +203,6 @@ struct AppSettings: Codable {
 		self.captureTargetPromptEnabled = captureTargetPromptEnabled
 		self.microphoneDeviceID = microphoneDeviceID
 		self.outputDirectoryPath = outputDirectoryPath
-		self.videoCodecID = videoCodecID
 		self.desktopAudioVolume = desktopAudioVolume
 		self.microphoneVolume = microphoneVolume
 	}
@@ -274,7 +269,6 @@ struct AppSettings: Codable {
 		captureTargetPromptEnabled = try container.decodeIfPresent(Bool.self, forKey: .captureTargetPromptEnabled) ?? true
 		microphoneDeviceID = try container.decodeIfPresent(String.self, forKey: .microphoneDeviceID)
 		outputDirectoryPath = try container.decodeIfPresent(String.self, forKey: .outputDirectoryPath)
-		videoCodecID = try container.decodeIfPresent(String.self, forKey: .videoCodecID) ?? CaptureVideoCodec.default.id
 		desktopAudioVolume = try container.decodeIfPresent(Double.self, forKey: .desktopAudioVolume) ?? 1
 		microphoneVolume = try container.decodeIfPresent(Double.self, forKey: .microphoneVolume) ?? 1
 	}
@@ -321,8 +315,6 @@ struct AppSettings: Codable {
 		try container.encode(captureTargetPromptEnabled, forKey: .captureTargetPromptEnabled)
 		try container.encodeIfPresent(microphoneDeviceID, forKey: .microphoneDeviceID)
 		try container.encodeIfPresent(outputDirectoryPath, forKey: .outputDirectoryPath)
-		let codecToStore: String? = videoCodecID == CaptureVideoCodec.default.id ? nil : videoCodecID
-		try container.encodeIfPresent(codecToStore, forKey: .videoCodecID)
 		try container.encode(desktopAudioVolume, forKey: .desktopAudioVolume)
 		try container.encode(microphoneVolume, forKey: .microphoneVolume)
 	}
@@ -337,10 +329,6 @@ struct AppSettings: Codable {
 
 	var container: CaptureContainer {
 		CaptureContainer.options.first(where: { $0.id == containerID }) ?? .default
-	}
-
-	var videoCodec: CaptureVideoCodec {
-		CaptureVideoCodec.resolve(id: videoCodecID)
 	}
 
 	var audioCodec: CaptureAudioCodec {
@@ -423,7 +411,6 @@ enum AppSettingsStorage {
 		if !FeedbackSound.options.contains(where: { $0.id == s.errorFeedbackSoundID }) {
 			s.errorFeedbackSoundID = defaults.errorFeedbackSoundID
 		}
-		if !CaptureVideoCodec.options.contains(where: { $0.id == s.videoCodecID }) { s.videoCodecID = defaults.videoCodecID }
 		if !AppSettings.audioVolumeRange.contains(s.desktopAudioVolume) { s.desktopAudioVolume = defaults.desktopAudioVolume }
 		if !AppSettings.audioVolumeRange.contains(s.microphoneVolume) { s.microphoneVolume = defaults.microphoneVolume }
 		return s

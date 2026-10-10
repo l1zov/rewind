@@ -216,19 +216,6 @@ private struct CaptureSettingsPane: View {
 					HelpLabel("Frame rate", help: "Higher frame rates produce smoother video but use more system resources.")
 				}
 				.pickerStyle(.menu)
-
-				if CaptureVideoCodec.options.count > 1 {
-					Picker(selection: $appState.selectedVideoCodec) {
-						ForEach(CaptureVideoCodec.options) { codec in
-							Text(defaultTaggedLabel(codec.label, isDefault: codec.isDefault)).tag(codec)
-						}
-					} label: {
-						HelpLabel(
-							"Video codec",
-							help: "H.264 plays everywhere, including Discord's inline preview. HEVC makes smaller files, but Discord and many other apps can't preview it.")
-					}
-					.pickerStyle(.menu)
-				}
 			}
 			.disabled(settingsLocked)
 

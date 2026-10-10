@@ -143,8 +143,8 @@ struct ReplayExporter {
         exportSession.outputURL = outputURL
         exportSession.outputFileType = container.avFileType
         exportSession.timeRange = timeRange
-        // Puts the index (moov) at the front so players can start before the
-        // whole file is available; Discord's inline preview relies on this.
+        // Puts the index (moov) at the front so players can stream
+        // before the whole file is downloaded.
         exportSession.shouldOptimizeForNetworkUse = true
 
         let session = UncheckedSendable(exportSession)

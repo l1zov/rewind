@@ -424,42 +424,37 @@ final class AppSettingsStorageTests: XCTestCase {
 		XCTAssertEqual(loaded.qualityID, AppSettings.default.qualityID)
 	}
 
-	// - Codec and volumes ---
+	// - Volumes ---
 
-	func testNewAudioAndCodecSettingsDefaultForOldInstalls() throws {
+	func testNewAudioVolumeSettingsDefaultForOldInstalls() throws {
 		// A blob written before these settings existed must still load.
 		var legacy = try storedDictionaryFor(AppSettings.default)
-		legacy.removeValue(forKey: "videoCodecID")
 		legacy.removeValue(forKey: "desktopAudioVolume")
 		legacy.removeValue(forKey: "microphoneVolume")
 		UserDefaults.standard.set(try JSONSerialization.data(withJSONObject: legacy), forKey: storageKey)
 
 		let loaded = AppSettingsStorage.load()
 
-		XCTAssertEqual(loaded.videoCodecID, CaptureVideoCodec.default.id)
 		XCTAssertEqual(loaded.desktopAudioVolume, 1)
 		XCTAssertEqual(loaded.microphoneVolume, 1)
 	}
 
-	func testVolumesAndCodecRoundTrip() {
+	func testVolumesRoundTrip() {
 		var settings = AppSettings.default
-		settings.videoCodecID = CaptureVideoCodec.options.last!.id
 		settings.desktopAudioVolume = 0.4
 		settings.microphoneVolume = 0.75
 		AppSettingsStorage.save(settings)
 
 		let loaded = AppSettingsStorage.load()
-		XCTAssertEqual(loaded.videoCodecID, settings.videoCodecID)
 		XCTAssertEqual(loaded.desktopAudioVolume, 0.4)
 		XCTAssertEqual(loaded.microphoneVolume, 0.75)
 	}
 
-	func testOutOfRangeVolumesAndUnknownCodecAreRepairedIndividually() throws {
+	func testOutOfRangeVolumesAreRepairedIndividually() throws {
 		var settings = AppSettings.default
 		settings.replayDuration = 90
 		settings.desktopAudioVolume = 7
 		settings.microphoneVolume = -1
-		settings.videoCodecID = "av1"
 		UserDefaults.standard.set(try JSONEncoder().encode(settings), forKey: storageKey)
 
 		let loaded = AppSettingsStorage.load()
@@ -467,7 +462,6 @@ final class AppSettingsStorageTests: XCTestCase {
 		XCTAssertEqual(loaded.replayDuration, 90)
 		XCTAssertEqual(loaded.desktopAudioVolume, AppSettings.default.desktopAudioVolume)
 		XCTAssertEqual(loaded.microphoneVolume, AppSettings.default.microphoneVolume)
-		XCTAssertEqual(loaded.videoCodecID, CaptureVideoCodec.default.id)
 	}
 
 	private func storedDictionaryFor(_ settings: AppSettings) throws -> [String: Any] {

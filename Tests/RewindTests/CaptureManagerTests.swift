@@ -97,8 +97,7 @@ private final class FakeWriter: SegmentWriter, @unchecked Sendable {
 
 	func configureSegment(
 		outputURL: URL, videoSize _: CGSize, includeAudio _: Bool, audioSettings _: [String: Any]?,
-		quality _: QualityPreset, frameRate _: Int, recordMicrophone _: Bool,
-		videoCodec _: CaptureVideoCodec
+		quality _: QualityPreset, frameRate _: Int, recordMicrophone _: Bool
 	) throws {
 		lock.withLock { url = outputURL }
 	}

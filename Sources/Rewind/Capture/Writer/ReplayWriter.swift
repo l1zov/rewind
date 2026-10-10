@@ -58,7 +58,6 @@ final class ReplayWriter: @unchecked Sendable {
     var configuredAudioSettings: [String: Any]?
     var configuredVideoMode: VideoMode = .pixelBufferEncode
     var configuredQuality: QualityPreset = .default
-    var configuredVideoCodec: CaptureVideoCodec = .default
     var configuredFrameRate = Constants.defaultFrameRate
     var configuredRecordMicrophone = false
     var includeAudio = false
@@ -130,8 +129,7 @@ final class ReplayWriter: @unchecked Sendable {
         videoMode: VideoMode = .pixelBufferEncode,
         quality: QualityPreset = .default,
         frameRate: Int = Constants.defaultFrameRate,
-        recordMicrophone: Bool = false,
-        videoCodec: CaptureVideoCodec = .default
+        recordMicrophone: Bool = false
     ) throws {
         var configureError: Error?
         syncOnQueue {
@@ -144,8 +142,7 @@ final class ReplayWriter: @unchecked Sendable {
                     videoMode: videoMode,
                     quality: quality,
                     frameRate: frameRate,
-                    recordMicrophone: recordMicrophone,
-                    videoCodec: videoCodec
+                    recordMicrophone: recordMicrophone
                 )
             } catch {
                 configureError = error
@@ -163,8 +160,7 @@ final class ReplayWriter: @unchecked Sendable {
         videoMode: VideoMode,
         quality: QualityPreset,
         frameRate: Int,
-        recordMicrophone: Bool,
-        videoCodec: CaptureVideoCodec
+        recordMicrophone: Bool
     ) throws {
         guard outputURL.isFileURL else {
             throw CaptureError.exportFailed
@@ -192,13 +188,12 @@ final class ReplayWriter: @unchecked Sendable {
                         for: quality, videoSize: CGSize(width: width, height: height),
                         frameRate: frameRate)
                     AppLog.debug(
-                        .writer, "ReplayWriter.configure codec:", videoCodec.id,
+                        .writer, "ReplayWriter.configure codec:", VideoEncoderSettings.codec.rawValue,
                         "preset:", quality.label,
                         "target bitrate:", String(format: "%.1f", estimatedBitrate), "Mbps")
 
                     let videoSettings = VideoEncoderSettings.outputSettings(
-                        quality: quality, width: width, height: height, frameRate: frameRate,
-                        codec: videoCodec)
+                        quality: quality, width: width, height: height, frameRate: frameRate)
                     let input = AVAssetWriterInput(mediaType: .video, outputSettings: videoSettings)
 
                     let adaptorAttrs: [String: Any] = [
@@ -270,7 +265,6 @@ final class ReplayWriter: @unchecked Sendable {
         self.configuredAudioSettings = audioSettings
         self.configuredVideoMode = videoMode
         self.configuredQuality = quality
-        self.configuredVideoCodec = videoCodec
         self.configuredFrameRate = frameRate
         self.configuredRecordMicrophone = recordMicrophone
         self.includeAudio = includeAudio
@@ -324,7 +318,6 @@ final class ReplayWriter: @unchecked Sendable {
         configuredAudioSettings = nil
         configuredVideoMode = .pixelBufferEncode
         configuredQuality = .default
-        configuredVideoCodec = .default
         configuredFrameRate = Constants.defaultFrameRate
         includeAudio = false
         resetRuntimeState(resetReconfigureCount: false)

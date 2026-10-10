@@ -36,8 +36,7 @@ protocol SegmentWriter: AnyObject, Sendable {
 		audioSettings: [String: Any]?,
 		quality: QualityPreset,
 		frameRate: Int,
-		recordMicrophone: Bool,
-		videoCodec: CaptureVideoCodec
+		recordMicrophone: Bool
 	) throws
 	func finishWriting() async throws -> URL
 	func appendVideo(_ sampleBuffer: CMSampleBuffer)
@@ -53,8 +52,7 @@ extension ReplayWriter: SegmentWriter {
 		audioSettings: [String: Any]?,
 		quality: QualityPreset,
 		frameRate: Int,
-		recordMicrophone: Bool,
-		videoCodec: CaptureVideoCodec
+		recordMicrophone: Bool
 	) throws {
 		try configure(
 			outputURL: outputURL,
@@ -64,8 +62,7 @@ extension ReplayWriter: SegmentWriter {
 			videoMode: .pixelBufferEncode,
 			quality: quality,
 			frameRate: frameRate,
-			recordMicrophone: recordMicrophone,
-			videoCodec: videoCodec
+			recordMicrophone: recordMicrophone
 		)
 	}
 }

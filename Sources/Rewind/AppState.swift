@@ -115,15 +115,6 @@ final class AppState: ObservableObject {
 		}
 	}
 
-	@Published var selectedVideoCodec: CaptureVideoCodec = .default {
-		didSet {
-			guard !isRestoringSettings else { return }
-			guard selectedVideoCodec != oldValue else { return }
-			persistSettings()
-			restartCaptureSilently()
-		}
-	}
-
 	/// Mix level (0...1) of desktop audio in saved clips. Applied when a clip is
 	/// saved, so changing it needs no capture restart.
 	@Published var desktopAudioVolume = AppSettings.default.desktopAudioVolume {
@@ -548,7 +539,6 @@ final class AppState: ObservableObject {
 		selectedFrameRate = settings.frameRateOption
 		selectedContainer = settings.container
 		selectedAudioCodec = settings.audioCodec
-		selectedVideoCodec = settings.videoCodec
 		desktopAudioVolume = settings.desktopAudioVolume
 		microphoneVolume = settings.microphoneVolume
 		preferredResolutionID = settings.resolutionID
@@ -613,7 +603,6 @@ final class AppState: ObservableObject {
 		selectedFrameRate = settings.frameRateOption
 		selectedContainer = settings.container
 		selectedAudioCodec = settings.audioCodec
-		selectedVideoCodec = settings.videoCodec
 		desktopAudioVolume = settings.desktopAudioVolume
 		microphoneVolume = settings.microphoneVolume
 		preferredResolutionID = settings.resolutionID
@@ -838,7 +827,6 @@ final class AppState: ObservableObject {
 				quality: selectedQuality,
 				frameRate: selectedFrameRate.framesPerSecond,
 				audioCodec: selectedAudioCodec,
-				videoCodec: selectedVideoCodec,
 				recordMicrophoneEnabled: recordMicrophoneEnabled,
 				recordDesktopAudioEnabled: recordDesktopAudioEnabled,
 				microphoneDeviceID: selectedMicrophoneDeviceID
@@ -979,7 +967,6 @@ final class AppState: ObservableObject {
 				quality: selectedQuality,
 				frameRate: selectedFrameRate.framesPerSecond,
 				audioCodec: selectedAudioCodec,
-				videoCodec: selectedVideoCodec,
 				recordMicrophoneEnabled: recordMicrophoneEnabled,
 				recordDesktopAudioEnabled: recordDesktopAudioEnabled,
 				microphoneDeviceID: selectedMicrophoneDeviceID
@@ -1333,7 +1320,6 @@ final class AppState: ObservableObject {
 				captureTargetPromptEnabled: captureTargetPromptEnabled,
 				microphoneDeviceID: selectedMicrophoneDeviceID,
 				outputDirectoryPath: outputDirectoryPath,
-				videoCodecID: selectedVideoCodec.id,
 				desktopAudioVolume: desktopAudioVolume,
 				microphoneVolume: microphoneVolume
 			)

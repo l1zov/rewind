@@ -42,7 +42,6 @@ actor CaptureManager {
     private var currentQuality: QualityPreset = .default
     private var currentFrameRate: Int = CaptureFrameRate.default.framesPerSecond
     private var currentAudioCodec: CaptureAudioCodec = .default
-    private var currentVideoCodec: CaptureVideoCodec = .default
     private var recordMicrophoneEnabled: Bool = false
     private var recordDesktopAudioEnabled: Bool = true
     private var onCaptureInterrupted: (@MainActor (Error) -> Void)?
@@ -102,7 +101,6 @@ actor CaptureManager {
         quality: QualityPreset = .default,
         frameRate: Int = CaptureFrameRate.default.framesPerSecond,
         audioCodec: CaptureAudioCodec = .default,
-        videoCodec: CaptureVideoCodec = .default,
         recordMicrophoneEnabled: Bool = false,
         recordDesktopAudioEnabled: Bool = true,
         microphoneDeviceID: String? = nil
@@ -110,7 +108,7 @@ actor CaptureManager {
         try await lifecycle.withLock {
             try await startLocked(
                 contentFilter: contentFilter, resolution: resolution, quality: quality,
-                frameRate: frameRate, audioCodec: audioCodec, videoCodec: videoCodec,
+                frameRate: frameRate, audioCodec: audioCodec,
                 recordMicrophoneEnabled: recordMicrophoneEnabled,
                 recordDesktopAudioEnabled: recordDesktopAudioEnabled,
                 microphoneDeviceID: microphoneDeviceID)
@@ -123,7 +121,6 @@ actor CaptureManager {
         quality: QualityPreset,
         frameRate: Int,
         audioCodec: CaptureAudioCodec,
-        videoCodec: CaptureVideoCodec,
         recordMicrophoneEnabled: Bool,
         recordDesktopAudioEnabled: Bool,
         microphoneDeviceID: String?
@@ -133,7 +130,6 @@ actor CaptureManager {
         currentQuality = quality
         currentFrameRate = frameRate
         currentAudioCodec = audioCodec
-        currentVideoCodec = videoCodec
         self.recordMicrophoneEnabled = recordMicrophoneEnabled
         self.recordDesktopAudioEnabled = recordDesktopAudioEnabled
 
@@ -248,8 +244,7 @@ actor CaptureManager {
             audioSettings: captureAudioSettings,
             quality: currentQuality,
             frameRate: currentFrameRate,
-            recordMicrophone: recordMicrophoneEnabled,
-            videoCodec: currentVideoCodec
+            recordMicrophone: recordMicrophoneEnabled
         )
     }
 
@@ -266,8 +261,7 @@ actor CaptureManager {
                 audioSettings: captureAudioSettings,
                 quality: currentQuality,
                 frameRate: currentFrameRate,
-                recordMicrophone: recordMicrophoneEnabled,
-                videoCodec: currentVideoCodec
+                recordMicrophone: recordMicrophoneEnabled
             )
             standbyWriter = writer
         } catch {
