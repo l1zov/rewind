@@ -1,3 +1,5 @@
+import Defaults
+
 @MainActor
 final class AppCompositionRoot {
 	static let shared = AppCompositionRoot()
@@ -8,9 +10,9 @@ final class AppCompositionRoot {
 	let analytics: any AnalyticsTracking
 
 	private init() {
+		DefaultsMigration.migrateLegacySettingsIfNeeded()
 		let hotkeyManager = GlobalHotkeyManager.shared
-		let settings = AppSettingsStorage.load()
-		let analytics = PostHogAnalytics(enabled: settings.analyticsEnabled)
+		let analytics = PostHogAnalytics(enabled: Defaults[.analyticsEnabled])
 		let appState = AppState(analytics: analytics, hotkeyManager: hotkeyManager)
 		let updaterController = UpdaterController()
 

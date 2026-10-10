@@ -10,6 +10,7 @@ let package = Package(
 	dependencies: [
 		.package(url: "https://github.com/sparkle-project/Sparkle", from: "2.6.2"),
 		.package(url: "https://github.com/CocoaLumberjack/CocoaLumberjack", exact: "3.8.5"),
+		.package(url: "https://github.com/sindresorhus/Defaults", from: "8.2.0"),
 	],
 	targets: [
 		.target(
@@ -21,6 +22,7 @@ let package = Package(
 			dependencies: [
 				.product(name: "Sparkle", package: "Sparkle"),
 				.product(name: "CocoaLumberjackSwift", package: "CocoaLumberjack"),
+				.product(name: "Defaults", package: "Defaults"),
 				"RewindObjCSupport",
 			],
 			path: "Sources/Rewind",
@@ -34,7 +36,10 @@ let package = Package(
 		),
 		.testTarget(
 			name: "RewindTests",
-			dependencies: ["Rewind"],
+			dependencies: [
+				"Rewind",
+				.product(name: "Defaults", package: "Defaults"),
+			],
 			path: "Tests/RewindTests",
 			linkerSettings: [
 				.unsafeFlags([

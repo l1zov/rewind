@@ -1,6 +1,7 @@
 import AppKit
 @preconcurrency import AVFoundation
 import Combine
+import Defaults
 @preconcurrency import ScreenCaptureKit
 import SwiftUI
 
@@ -591,6 +592,48 @@ final class AppState: ObservableObject {
 			await discordRPCClient.setEnabled(discordRPCEnabled)
 			self.publishDiscordPresenceWithRetry(for: self.discordActivityState)
 		}
+		setupDefaultsObservers()
+	}
+
+	private func setupDefaultsObservers() {
+		Defaults.observe(.analyticsEnabled) { [weak self] change in
+			guard let self else { return }
+			Task { @MainActor in
+				await self.analytics.setEnabled(change.newValue)
+			}
+		}.tieToLifetime(of: self)
+
+		Defaults.observe(.fileLoggingEnabled) { change in
+			AppLog.fileLoggingEnabled = change.newValue
+		}.tieToLifetime(of: self)
+
+		Defaults.observe(.discordRPCEnabled) { [weak self] change in
+			guard let self else { return }
+			Task { @MainActor in
+				await self.discordRPCClient.setEnabled(change.newValue)
+				if change.newValue {
+					self.publishDiscordPresenceWithRetry(for: self.discordActivityState)
+					if self.isCapturing, self.discordActivityState.isRecording, self.gamePresenceTask == nil {
+						self.startGamePresenceUpdates()
+					}
+				} else {
+					self.discordPresenceRetryTask?.cancel()
+					self.discordPresenceRetryTask = nil
+				}
+			}
+		}.tieToLifetime(of: self)
+
+		Defaults.observe(.shareGamePresenceEnabled) { [weak self] _ in
+			Task { @MainActor [weak self] in
+				self?.refreshGamePresenceIfRecording()
+			}
+		}.tieToLifetime(of: self)
+
+		Defaults.observe(.shareRobloxExperienceEnabled) { [weak self] _ in
+			Task { @MainActor [weak self] in
+				self?.refreshGamePresenceIfRecording()
+			}
+		}.tieToLifetime(of: self)
 	}
 
 	func resetToDefaults() {
@@ -1284,46 +1327,6 @@ final class AppState: ObservableObject {
 	}
 
 	private func persistSettings() {
-		AppSettingsStorage.save(
-			AppSettings(
-				replayDuration: replayDuration,
-				resolutionID: preferredResolutionID,
-				qualityID: selectedQuality.id,
-				frameRate: selectedFrameRate.framesPerSecond,
-				containerID: selectedContainer.id,
-				audioCodecID: selectedAudioCodec.id,
-				hotkey: hotkey,
-				startRecordingHotkey: startRecordingHotkey,
-				alwaysRecordEnabled: alwaysRecordEnabled,
-				saveFeedbackEnabled: saveFeedbackEnabled,
-				saveFeedbackVolume: saveFeedbackVolume,
-				saveFeedbackSoundID: saveFeedbackSound.id,
-				recordingStartFeedbackEnabled: recordingStartFeedbackEnabled,
-				recordingStartFeedbackVolume: recordingStartFeedbackVolume,
-				recordingStartFeedbackSoundID: recordingStartFeedbackSound.id,
-				recordingEndFeedbackEnabled: recordingEndFeedbackEnabled,
-				recordingEndFeedbackVolume: recordingEndFeedbackVolume,
-				recordingEndFeedbackSoundID: recordingEndFeedbackSound.id,
-				errorFeedbackEnabled: errorFeedbackEnabled,
-				errorFeedbackVolume: errorFeedbackVolume,
-				errorFeedbackSoundID: errorFeedbackSound.id,
-				discordRPCEnabled: discordRPCEnabled,
-				shareGamePresenceEnabled: shareGamePresenceEnabled,
-				shareRobloxExperienceEnabled: shareRobloxExperienceEnabled,
-				fileLoggingEnabled: fileLoggingEnabled,
-				analyticsEnabled: analyticsEnabled,
-
-				betaUpdatesEnabled: betaUpdatesEnabled,
-				enabledUploadProviderIDs: enabledUploadProviderIDs,
-				recordMicrophoneEnabled: recordMicrophoneEnabled,
-				recordDesktopAudioEnabled: recordDesktopAudioEnabled,
-				captureTargetPromptEnabled: captureTargetPromptEnabled,
-				microphoneDeviceID: selectedMicrophoneDeviceID,
-				outputDirectoryPath: outputDirectoryPath,
-				desktopAudioVolume: desktopAudioVolume,
-				microphoneVolume: microphoneVolume
-			)
-		)
 		let settings = analyticsSettingsSnapshot
 		Task { await analytics.settingsUpdated(settings) }
 	}

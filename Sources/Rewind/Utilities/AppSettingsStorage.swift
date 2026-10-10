@@ -1,3 +1,4 @@
+import Defaults
 import Foundation
 
 struct AppSettings: Codable {
@@ -132,42 +133,41 @@ struct AppSettings: Codable {
 	}
 
 	init(
-		replayDuration: TimeInterval,
-		resolutionID: String?,
-		qualityID: String,
-		frameRate: Int,
-		containerID: String,
-		audioCodecID: String,
-		hotkey: Hotkey,
-		startRecordingHotkey: Hotkey,
-		alwaysRecordEnabled: Bool,
-		saveFeedbackEnabled: Bool,
-		saveFeedbackVolume: Double,
-		saveFeedbackSoundID: String,
-		recordingStartFeedbackEnabled: Bool,
-		recordingStartFeedbackVolume: Double,
-		recordingStartFeedbackSoundID: String,
-		recordingEndFeedbackEnabled: Bool,
-		recordingEndFeedbackVolume: Double,
-		recordingEndFeedbackSoundID: String,
-		errorFeedbackEnabled: Bool,
-		errorFeedbackVolume: Double,
-		errorFeedbackSoundID: String,
-		discordRPCEnabled: Bool,
-		shareGamePresenceEnabled: Bool,
-		shareRobloxExperienceEnabled: Bool,
-		fileLoggingEnabled: Bool,
-		analyticsEnabled: Bool,
-
-		betaUpdatesEnabled: Bool,
-		enabledUploadProviderIDs: [String],
-		recordMicrophoneEnabled: Bool,
-		recordDesktopAudioEnabled: Bool,
-		captureTargetPromptEnabled: Bool,
-		microphoneDeviceID: String?,
-		outputDirectoryPath: String?,
-		desktopAudioVolume: Double = 1,
-		microphoneVolume: Double = 1
+		replayDuration: TimeInterval = AppSettings.default.replayDuration,
+		resolutionID: String? = AppSettings.default.resolutionID,
+		qualityID: String = AppSettings.default.qualityID,
+		frameRate: Int = AppSettings.default.frameRate,
+		containerID: String = AppSettings.default.containerID,
+		audioCodecID: String = AppSettings.default.audioCodecID,
+		hotkey: Hotkey = AppSettings.default.hotkey,
+		startRecordingHotkey: Hotkey = AppSettings.default.startRecordingHotkey,
+		alwaysRecordEnabled: Bool = AppSettings.default.alwaysRecordEnabled,
+		saveFeedbackEnabled: Bool = AppSettings.default.saveFeedbackEnabled,
+		saveFeedbackVolume: Double = AppSettings.default.saveFeedbackVolume,
+		saveFeedbackSoundID: String = AppSettings.default.saveFeedbackSoundID,
+		recordingStartFeedbackEnabled: Bool = AppSettings.default.recordingStartFeedbackEnabled,
+		recordingStartFeedbackVolume: Double = AppSettings.default.recordingStartFeedbackVolume,
+		recordingStartFeedbackSoundID: String = AppSettings.default.recordingStartFeedbackSoundID,
+		recordingEndFeedbackEnabled: Bool = AppSettings.default.recordingEndFeedbackEnabled,
+		recordingEndFeedbackVolume: Double = AppSettings.default.recordingEndFeedbackVolume,
+		recordingEndFeedbackSoundID: String = AppSettings.default.recordingEndFeedbackSoundID,
+		errorFeedbackEnabled: Bool = AppSettings.default.errorFeedbackEnabled,
+		errorFeedbackVolume: Double = AppSettings.default.errorFeedbackVolume,
+		errorFeedbackSoundID: String = AppSettings.default.errorFeedbackSoundID,
+		discordRPCEnabled: Bool = AppSettings.default.discordRPCEnabled,
+		shareGamePresenceEnabled: Bool = AppSettings.default.shareGamePresenceEnabled,
+		shareRobloxExperienceEnabled: Bool = AppSettings.default.shareRobloxExperienceEnabled,
+		fileLoggingEnabled: Bool = AppSettings.default.fileLoggingEnabled,
+		analyticsEnabled: Bool = AppSettings.default.analyticsEnabled,
+		betaUpdatesEnabled: Bool = AppSettings.default.betaUpdatesEnabled,
+		enabledUploadProviderIDs: [String] = AppSettings.default.enabledUploadProviderIDs,
+		recordMicrophoneEnabled: Bool = AppSettings.default.recordMicrophoneEnabled,
+		recordDesktopAudioEnabled: Bool = AppSettings.default.recordDesktopAudioEnabled,
+		captureTargetPromptEnabled: Bool = AppSettings.default.captureTargetPromptEnabled,
+		microphoneDeviceID: String? = AppSettings.default.microphoneDeviceID,
+		outputDirectoryPath: String? = AppSettings.default.outputDirectoryPath,
+		desktopAudioVolume: Double = AppSettings.default.desktopAudioVolume,
+		microphoneVolume: Double = AppSettings.default.microphoneVolume
 	) {
 		self.replayDuration = replayDuration
 		self.resolutionID = resolutionID
@@ -376,7 +376,44 @@ enum AppSettingsStorage {
 	}
 
 	static func save(_ settings: AppSettings) {
-		guard let data = try? JSONEncoder().encode(sanitized(settings)) else {
+		let s = sanitized(settings)
+		Defaults[.replayDuration] = s.replayDuration
+		Defaults[.resolutionID] = s.resolutionID
+		Defaults[.qualityID] = s.qualityID
+		Defaults[.frameRate] = s.frameRate
+		Defaults[.containerID] = s.containerID
+		Defaults[.audioCodecID] = s.audioCodecID
+		Defaults[.hotkey] = s.hotkey
+		Defaults[.startRecordingHotkey] = s.startRecordingHotkey
+		Defaults[.alwaysRecordEnabled] = s.alwaysRecordEnabled
+		Defaults[.saveFeedbackEnabled] = s.saveFeedbackEnabled
+		Defaults[.saveFeedbackVolume] = s.saveFeedbackVolume
+		Defaults[.saveFeedbackSoundID] = s.saveFeedbackSoundID
+		Defaults[.recordingStartFeedbackEnabled] = s.recordingStartFeedbackEnabled
+		Defaults[.recordingStartFeedbackVolume] = s.recordingStartFeedbackVolume
+		Defaults[.recordingStartFeedbackSoundID] = s.recordingStartFeedbackSoundID
+		Defaults[.recordingEndFeedbackEnabled] = s.recordingEndFeedbackEnabled
+		Defaults[.recordingEndFeedbackVolume] = s.recordingEndFeedbackVolume
+		Defaults[.recordingEndFeedbackSoundID] = s.recordingEndFeedbackSoundID
+		Defaults[.errorFeedbackEnabled] = s.errorFeedbackEnabled
+		Defaults[.errorFeedbackVolume] = s.errorFeedbackVolume
+		Defaults[.errorFeedbackSoundID] = s.errorFeedbackSoundID
+		Defaults[.discordRPCEnabled] = s.discordRPCEnabled
+		Defaults[.shareGamePresenceEnabled] = s.shareGamePresenceEnabled
+		Defaults[.shareRobloxExperienceEnabled] = s.shareRobloxExperienceEnabled
+		Defaults[.fileLoggingEnabled] = s.fileLoggingEnabled
+		Defaults[.analyticsEnabled] = s.analyticsEnabled
+		Defaults[.betaUpdatesEnabled] = s.betaUpdatesEnabled
+		Defaults[.enabledUploadProviderIDs] = s.enabledUploadProviderIDs
+		Defaults[.recordMicrophoneEnabled] = s.recordMicrophoneEnabled
+		Defaults[.recordDesktopAudioEnabled] = s.recordDesktopAudioEnabled
+		Defaults[.captureTargetPromptEnabled] = s.captureTargetPromptEnabled
+		Defaults[.microphoneDeviceID] = s.microphoneDeviceID
+		Defaults[.outputDirectoryPath] = s.outputDirectoryPath
+		Defaults[.desktopAudioVolume] = s.desktopAudioVolume
+		Defaults[.microphoneVolume] = s.microphoneVolume
+
+		guard let data = try? JSONEncoder().encode(s) else {
 			UserDefaults.standard.removeObject(forKey: key)
 			return
 		}

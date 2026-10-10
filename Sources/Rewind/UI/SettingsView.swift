@@ -1,5 +1,6 @@
 import AppKit
 import Carbon
+import Defaults
 import SwiftUI
 
 struct SettingsView: View {
@@ -64,6 +65,9 @@ struct SettingsView: View {
 private struct GeneralSettingsPane: View {
 	@ObservedObject var appState: AppState
 	@ObservedObject var updaterController: UpdaterController
+	@Default(.betaUpdatesEnabled) var betaUpdatesEnabled
+	@Default(.analyticsEnabled) var analyticsEnabled
+	@Default(.fileLoggingEnabled) var fileLoggingEnabled
 	@State private var showingResetConfirmation = false
 
 	var body: some View {
@@ -84,13 +88,13 @@ private struct GeneralSettingsPane: View {
 				}
 				.disabled(!updaterController.updater.canCheckForUpdates)
 
-				Toggle(isOn: $appState.betaUpdatesEnabled) {
+				Toggle(isOn: $betaUpdatesEnabled) {
 					HelpLabel("Receive beta updates", help: "Opt in to early beta releases. Betas may be less stable. Turn off to return to stable releases on the next update.")
 				}
 			}
 
 			Section("Privacy") {
-				Toggle(isOn: $appState.analyticsEnabled) {
+				Toggle(isOn: $analyticsEnabled) {
 					HelpLabel(
 						"Share anonymous analytics",
 						help: "Sends anonymous app-open, recording, and replay-save events to help improve Rewind. Never includes recordings, screenshots, file paths, game names, or error details."
@@ -99,7 +103,7 @@ private struct GeneralSettingsPane: View {
 			}
 
 			Section("Diagnostics") {
-				Toggle(isOn: $appState.fileLoggingEnabled) {
+				Toggle(isOn: $fileLoggingEnabled) {
 					HelpLabel("Enable verbose file logging", help: "Writes detailed debug logs to disk for troubleshooting.")
 				}
 
@@ -508,21 +512,24 @@ private struct WindowAccessor: NSViewRepresentable {
 private struct IntegrationsSettingsPane: View {
 	@ObservedObject var appState: AppState
 	let settingsLocked: Bool
+	@Default(.discordRPCEnabled) var discordRPCEnabled
+	@Default(.shareGamePresenceEnabled) var shareGamePresenceEnabled
+	@Default(.shareRobloxExperienceEnabled) var shareRobloxExperienceEnabled
 
 	var body: some View {
 		Form {
 			Section("Connections") {
-				Toggle(isOn: $appState.discordRPCEnabled) {
+				Toggle(isOn: $discordRPCEnabled) {
 					HelpLabel("Enable Discord RPC", help: "Shows your recording status on your Discord profile.")
 				}
-				Toggle(isOn: $appState.shareGamePresenceEnabled) {
+				Toggle(isOn: $shareGamePresenceEnabled) {
 					HelpLabel("Show the game you're playing", help: "Adds the game you're playing to your Discord status. Turn this off to show only that you're recording, without naming the game.")
 				}
-				.disabled(!appState.discordRPCEnabled)
-				Toggle(isOn: $appState.shareRobloxExperienceEnabled) {
+				.disabled(!discordRPCEnabled)
+				Toggle(isOn: $shareRobloxExperienceEnabled) {
 					HelpLabel("Show your Roblox experience", help: "Shows exactly which Roblox experience you're in, with a button friends can use to join you. Turn this off to show just \"Roblox\".")
 				}
-				.disabled(!appState.discordRPCEnabled || !appState.shareGamePresenceEnabled)
+				.disabled(!discordRPCEnabled || !shareGamePresenceEnabled)
 			}
 			.disabled(settingsLocked)
 

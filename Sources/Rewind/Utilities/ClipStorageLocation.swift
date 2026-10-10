@@ -1,3 +1,4 @@
+import Defaults
 import Foundation
 
 enum ClipStorageLocation {
@@ -13,6 +14,6 @@ enum ClipStorageLocation {
 	}
 
 	static func current() -> URL {
-		folder(outputDirectoryPath: AppSettingsStorage.load().outputDirectoryPath)
+		folder(outputDirectoryPath: Defaults[.outputDirectoryPath])
 	}
 }

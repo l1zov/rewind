@@ -1,4 +1,5 @@
 import Combine
+import Defaults
 import Foundation
 import Sparkle
 
@@ -27,7 +28,7 @@ final class UpdaterController: NSObject, ObservableObject, SPUUpdaterDelegate {
 	/// always includes the default channel, so an empty set means stable-only. Read
 	/// from storage so toggling takes effect on the next check.
 	nonisolated func allowedChannels(for _: SPUUpdater) -> Set<String> {
-		AppSettingsStorage.load().betaUpdatesEnabled ? ["beta"] : []
+		Defaults[.betaUpdatesEnabled] ? ["beta"] : []
 	}
 
 	nonisolated func updater(_: SPUUpdater, willInstallUpdate _: SUAppcastItem) {
