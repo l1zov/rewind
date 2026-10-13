@@ -46,6 +46,7 @@ final class ScreenCaptureService: NSObject, SCStreamOutput, @unchecked Sendable 
 	private let videoQueue: DispatchQueue
 	private let audioQueue: DispatchQueue
 	private var captureResolution: CaptureResolution?
+	private var followTask: Task<Void, Never>?
 
 	private var loggedNonCompleteFrame: Bool {
 		get { stateLock.withLock { _loggedNonCompleteFrame } }
@@ -87,66 +88,75 @@ final class ScreenCaptureService: NSObject, SCStreamOutput, @unchecked Sendable 
 	) async throws {
 		guard stream == nil else { return }
 
-		// When the user picked a display/window/app via SCContentSharingPicker we
-		// capture exactly that; otherwise fall back to the primary display.
-		let filter: SCContentFilter
-		let display: SCDisplay?
-		if let providedFilter = contentFilter?.value {
-			filter = providedFilter
-			display = nil
-			AppLog.debug(.capture, "ScreenCaptureService: using picker-provided content filter")
+		// A display/window picked via SCContentSharingPicker is captured exactly.
+		// A picked app, or no pick at all (frontmost app), is followed across
+		// displays: the stream records whichever display shows its frontmost window.
+		let providedFilter = contentFilter?.value
+		let followTarget: DisplayFollowTarget?
+		if let providedFilter {
+			followTarget = DisplayFollowTarget(pickerFilter: providedFilter)
 		} else {
-			let content: SCShareableContent
-			if #available(macOS 14.0, *) {
-				content = try await SCShareableContent.excludingDesktopWindows(
-					false, onScreenWindowsOnly: true
-				)
-			} else {
-				content = try await SCShareableContent.current
-			}
-			guard let primaryDisplay = content.displays.first else {
-				throw CaptureError.noDisplay
-			}
-			display = primaryDisplay
-			filter = SCContentFilter(
-				display: primaryDisplay, excludingApplications: [], exceptingWindows: []
-			)
+			followTarget = .frontmostApplication
 		}
 
+		let filter: SCContentFilter
+		let startLocation: DisplayFollowLocation?
 		var nativeWidth = 0
 		var nativeHeight = 0
-
-		if #available(macOS 14.0, *) {
-			let scale = CGFloat(filter.pointPixelScale)
-			let contentRect = filter.contentRect
-			nativeWidth = finitePixelDimension(contentRect.width * scale) ?? 0
-			nativeHeight = finitePixelDimension(contentRect.height * scale) ?? 0
-			AppLog.debug(
-				.capture, "ScreenCaptureService: contentRect:", contentRect.width, "x",
-				contentRect.height
-			)
-			AppLog.debug(.capture, "ScreenCaptureService: pointPixelScale:", scale)
-		}
-
-		// The display-based fallback only applies to a whole-display capture; a
-		// picker-provided window/app filter always reports a valid contentRect.
-		if nativeWidth <= 1 || nativeHeight <= 1, let display {
-			let displayID = display.displayID
-			if let mode = CGDisplayCopyDisplayMode(displayID) {
-				nativeWidth = mode.pixelWidth
-				nativeHeight = mode.pixelHeight
-				AppLog.debug(
-					.capture, "ScreenCaptureService: fallback to CGDisplayMode pixels:",
-					nativeWidth, "x", nativeHeight
-				)
+		if let followTarget {
+			let content = try await SCShareableContent.loadOnScreen()
+			// Start where the target's window is; if it has none on screen yet, use
+			// the display the picker chose, else the main display.
+			let location = await DisplayFollower.currentLocation(for: followTarget)
+			let startID = location?.displayID
+				?? providedFilter.flatMap(DisplayFollower.pickedDisplayID(of:))
+				?? CGMainDisplayID()
+			guard let startDisplay = content.displays.first(where: { $0.displayID == startID })
+				?? content.displays.first,
+				let largest = DisplayFollower.largestDisplay(in: content)
+			else {
+				throw CaptureError.noDisplay
+			}
+			let pid: pid_t? = if let location {
+				location.pid
 			} else {
-				nativeWidth = display.width
-				nativeHeight = display.height
+				await DisplayFollower.currentPID(for: followTarget)
+			}
+			// The picked app may have quit since it was chosen; record the pick as-is
+			// until it relaunches.
+			filter = pid.flatMap {
+				DisplayFollower.makeFilter(for: followTarget, pid: $0, on: startDisplay, content: content)
+			} ?? providedFilter ?? SCContentFilter(
+				display: startDisplay, excludingApplications: [], exceptingWindows: []
+			)
+			startLocation = DisplayFollowLocation(
+				pid: followTarget == .frontmostApplication ? 0 : (pid ?? 0),
+				displayID: startDisplay.displayID
+			)
+			// The writer's size is fixed for the session; size it to the biggest
+			// display so following onto it never loses detail.
+			nativeWidth = largest.width
+			nativeHeight = largest.height
+			AppLog.info(
+				.capture, "ScreenCaptureService: following", followTarget, "starting on display",
+				startDisplay.displayID, "sized to largest display", largest.display.displayID
+			)
+		} else if let providedFilter {
+			filter = providedFilter
+			startLocation = nil
+			AppLog.debug(.capture, "ScreenCaptureService: using picker-provided content filter")
+			if #available(macOS 14.0, *) {
+				let scale = CGFloat(filter.pointPixelScale)
+				let contentRect = filter.contentRect
+				nativeWidth = finitePixelDimension(contentRect.width * scale) ?? 0
+				nativeHeight = finitePixelDimension(contentRect.height * scale) ?? 0
 				AppLog.debug(
-					.capture, "ScreenCaptureService: fallback to display properties:", nativeWidth,
-					"x", nativeHeight
+					.capture, "ScreenCaptureService: contentRect:", contentRect.width, "x",
+					contentRect.height, "pointPixelScale:", scale
 				)
 			}
+		} else {
+			throw CaptureError.noDisplay
 		}
 
 		guard nativeWidth > 1, nativeHeight > 1 else {
@@ -157,8 +167,10 @@ final class ScreenCaptureService: NSObject, SCStreamOutput, @unchecked Sendable 
 			.capture, "ScreenCaptureService: native pixels:", nativeWidth, "x", nativeHeight
 		)
 
+		// "Native" resolutions in the menu are a hint; re-derive them from the
+		// content actually being captured.
 		let targetResolution: CaptureResolution
-		if let resolution {
+		if let resolution, !resolution.isNative {
 			targetResolution = resolution
 		} else {
 			targetResolution = .native(width: nativeWidth, height: nativeHeight)
@@ -192,7 +204,11 @@ final class ScreenCaptureService: NSObject, SCStreamOutput, @unchecked Sendable 
 		let config = SCStreamConfiguration()
 		config.width = Int(outputSize.width)
 		config.height = Int(outputSize.height)
-		config.scalesToFit = (config.width != nativeWidth) || (config.height != nativeHeight)
+		// The writer's video size is fixed for the whole session, so when the stream
+		// may hop to a display of a different size it must scale into that size.
+		config.scalesToFit = followTarget != nil
+			|| (config.width != nativeWidth) || (config.height != nativeHeight)
+		config.preservesAspectRatio = true
 		config.queueDepth = 8
 		config.pixelFormat = capturePixelFormat(for: quality)
 		config.colorSpaceName = CGColorSpace.sRGB
@@ -217,7 +233,7 @@ final class ScreenCaptureService: NSObject, SCStreamOutput, @unchecked Sendable 
 			config.scalesToFit
 		)
 
-				if #available(macOS 15.0, *) {
+		if #available(macOS 15.0, *) {
 			config.captureMicrophone = recordMicrophone
 			// nil selects the system default input
 			config.microphoneCaptureDeviceID = recordMicrophone ? microphoneDeviceID : nil
@@ -244,6 +260,55 @@ final class ScreenCaptureService: NSObject, SCStreamOutput, @unchecked Sendable 
 		}
 		try await stream.startCapture()
 		self.stream = stream
+		if let followTarget, let startLocation {
+			startFollowingDisplay(
+				followTarget, stream: UncheckedSendable(stream), startLocation: startLocation
+			)
+		}
+	}
+
+	/// Polls where the target's frontmost window is and retargets the running
+	/// stream at that display (and app process), so only one display is recorded
+	/// at a time.
+	private func startFollowingDisplay(
+		_ target: DisplayFollowTarget, stream: UncheckedSendable<SCStream>,
+		startLocation: DisplayFollowLocation
+	) {
+		followTask?.cancel()
+		followTask = Task {
+			var debouncer = DisplaySwitchDebouncer(current: startLocation)
+			while !Task.isCancelled {
+				try? await Task.sleep(nanoseconds: DisplayFollower.pollIntervalNanos)
+				if Task.isCancelled { break }
+				var candidate = await DisplayFollower.currentLocation(for: target)
+				if target == .frontmostApplication, let found = candidate {
+					// A whole-display filter doesn't depend on which app is in front.
+					candidate = DisplayFollowLocation(pid: 0, displayID: found.displayID)
+				}
+				guard let next = debouncer.observe(candidate) else { continue }
+				do {
+					let content = try await SCShareableContent.loadOnScreen()
+					guard
+						let display = content.displays.first(where: { $0.displayID == next.displayID }),
+						let filter = DisplayFollower.makeFilter(
+							for: target, pid: next.pid, on: display, content: content
+						)
+					else {
+						continue
+					}
+					if Task.isCancelled { break }
+					try await stream.value.updateContentFilter(filter)
+					debouncer.didSwitch(to: next)
+					AppLog.info(
+						.capture, "ScreenCaptureService: switched capture to display", next.displayID,
+						"pid", next.pid
+					)
+				} catch {
+					if Task.isCancelled { break }
+					AppLog.error(.capture, "ScreenCaptureService: display switch failed", error: error)
+				}
+			}
+		}
 	}
 
 	private func capturePixelFormat(for quality: QualityPreset) -> OSType {
@@ -252,6 +317,8 @@ final class ScreenCaptureService: NSObject, SCStreamOutput, @unchecked Sendable 
 	}
 
 	func stopCapture() async {
+		followTask?.cancel()
+		followTask = nil
 		guard let stream = stream else { return }
 		_ = try? await stream.stopCapture()
 		self.stream = nil

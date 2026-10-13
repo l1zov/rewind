@@ -57,7 +57,7 @@ enum CaptureResolutionProvider {
 	private static let nativeDimensionAttempts = 3
 	private static let nativeDimensionRetryNanos: UInt64 = 200_000_000
 
-	/// returns available resolutions for the main display
+	/// returns available resolutions for the largest display
 	static func availableResolutions() async -> [CaptureResolution] {
 		guard let (nativeWidth, nativeHeight) = await getNativePixelDimensions() else {
 			return []
@@ -92,7 +92,7 @@ enum CaptureResolutionProvider {
 		return resolutions
 	}
 
-	/// returns the native pixel resolution of the main display
+	/// returns the native pixel resolution of the largest display
 	static func nativeResolution() async -> CaptureResolution? {
 		guard let (width, height) = await getNativePixelDimensions() else { return nil }
 		return .native(width: width, height: height)
@@ -101,18 +101,15 @@ enum CaptureResolutionProvider {
 	private static func getNativePixelDimensions() async -> (width: Int, height: Int)? {
 		for attempt in 1 ... nativeDimensionAttempts {
 			do {
-				let content: SCShareableContent
-				if #available(macOS 14.0, *) {
-					content = try await SCShareableContent.excludingDesktopWindows(
-						false, onScreenWindowsOnly: true
-					)
-				} else {
-					content = try await SCShareableContent.current
-				}
-				guard let display = content.displays.first else {
+				let content = try await SCShareableContent.loadOnScreen()
+				// Capture follows apps across displays at the largest display's size,
+				// so that is what "Native" means.
+				guard let largest = DisplayFollower.largestDisplay(in: content) else {
 					AppLog.info(
 						.app,
-						"No displays available from ScreenCaptureKit while loading resolutions. Attempt",
+						content.displays.isEmpty
+							? "No displays available from ScreenCaptureKit while loading resolutions. Attempt"
+							: "Display mode unavailable while loading resolutions. Attempt",
 						attempt
 					)
 					if attempt < nativeDimensionAttempts {
@@ -121,44 +118,7 @@ enum CaptureResolutionProvider {
 					}
 					return nil
 				}
-
-				let filter = SCContentFilter(
-					display: display, excludingApplications: [], exceptingWindows: []
-				)
-
-				var nativeWidth = 0
-				var nativeHeight = 0
-
-				if #available(macOS 14.0, *) {
-					let scale = CGFloat(filter.pointPixelScale)
-					let contentRect = filter.contentRect
-					nativeWidth = finitePixelDimension(contentRect.width * scale) ?? 0
-					nativeHeight = finitePixelDimension(contentRect.height * scale) ?? 0
-				}
-
-				if nativeWidth <= 1 || nativeHeight <= 1 {
-					let displayID = display.displayID
-					if let mode = CGDisplayCopyDisplayMode(displayID) {
-						nativeWidth = mode.pixelWidth
-						nativeHeight = mode.pixelHeight
-					} else {
-						nativeWidth = display.width
-						nativeHeight = display.height
-					}
-				}
-
-				guard nativeWidth > 1, nativeHeight > 1 else {
-					AppLog.info(
-						.app, "Display mode unavailable while loading resolutions. Attempt", attempt
-					)
-					if attempt < nativeDimensionAttempts {
-						try? await Task.sleep(nanoseconds: nativeDimensionRetryNanos)
-						continue
-					}
-					return nil
-				}
-
-				return (nativeWidth, nativeHeight)
+				return (largest.width, largest.height)
 			} catch {
 				AppLog.info(.app, "fetch shareable content Attempt", attempt, "error:", error)
 				if attempt < nativeDimensionAttempts {

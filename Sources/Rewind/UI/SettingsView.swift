@@ -164,7 +164,7 @@ private struct CaptureSettingsPane: View {
 					HelpLabel(
 						"Choose what to record",
 						help: AppState.supportsCaptureTargetPrompt
-							? "When you start recording manually, macOS asks which display, window or app to capture. Turn off to always record the main display."
+							? "When you start recording manually, macOS asks which display, window or app to capture. Picked apps are followed across displays. Turn off to record whichever display shows the app you are using."
 							: "Choosing a display, window, or app to capture requires macOS 14 or later."
 					)
 				}

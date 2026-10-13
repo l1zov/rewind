@@ -494,6 +494,16 @@ final class AppState: ObservableObject {
 			self?.objectWillChange.send()
 		}.store(in: &cancellables)
 
+		// Plugging in or removing a monitor changes which display is largest, and
+		// so what "Native" means.
+		NotificationCenter.default
+			.publisher(for: NSApplication.didChangeScreenParametersNotification)
+			.debounce(for: .seconds(1), scheduler: RunLoop.main)
+			.sink { [weak self] _ in
+				Task { await self?.loadAvailableResolutions() }
+			}
+			.store(in: &cancellables)
+
 		permissionState = PermissionManager.currentState()
 		let settings = AppSettingsStorage.load()
 		isRestoringSettings = true
