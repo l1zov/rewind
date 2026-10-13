@@ -52,6 +52,11 @@ extension Defaults.Keys {
 	static let errorFeedbackVolume = Key<Double>("errorFeedbackVolume", default: 20)
 	static let errorFeedbackSoundID = Key<String>("errorFeedbackSoundID", default: FeedbackSound.defaultError.id)
 
+	// - App trigger ---
+	static let appTriggerEnabled = Key<Bool>("appTriggerEnabled", default: false)
+	/// Bundle IDs of the apps that trigger recording, in the order the user added them.
+	static let watchedAppBundleIDs = Key<[String]>("watchedAppBundleIDs", default: [])
+
 	// - Integrations ---
 	static let discordRPCEnabled = Key<Bool>("discordRPCEnabled", default: true)
 	static let shareGamePresenceEnabled = Key<Bool>("shareGamePresenceEnabled", default: true)

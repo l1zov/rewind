@@ -157,10 +157,44 @@ final class AppState: ObservableObject {
 		didSet {
 			guard !isRestoringSettings else { return }
 			guard alwaysRecordEnabled != oldValue else { return }
+			if alwaysRecordEnabled {
+				// The two modes replace each other.
+				appTriggerEnabled = false
+			}
 			persistSettings()
 			if alwaysRecordEnabled {
 				startCapture(reason: .alwaysRecord)
 			}
+		}
+	}
+
+	/// Record only while one of `watchedAppBundleIDs` is open. Replaces Always Record.
+	@Published var appTriggerEnabled = Defaults[.appTriggerEnabled] {
+		didSet {
+			guard !isRestoringSettings else { return }
+			guard appTriggerEnabled != oldValue else { return }
+			if appTriggerEnabled {
+				let alwaysRecordWasOn = alwaysRecordEnabled
+				alwaysRecordEnabled = false
+				// Always Record's capture is stopped so the app trigger takes over once an
+				// app opens. A manual recording is left alone.
+				if alwaysRecordWasOn, isCapturing {
+					Task { await stopCaptureAsync(reason: .restarted) }
+				}
+			}
+			persistAppTriggerSettings()
+			persistSettings()
+			configureAppTrigger()
+		}
+	}
+
+	@Published var watchedAppBundleIDs = Defaults[.watchedAppBundleIDs] {
+		didSet {
+			guard !isRestoringSettings else { return }
+			guard watchedAppBundleIDs != oldValue else { return }
+			persistAppTriggerSettings()
+			persistSettings()
+			configureAppTrigger()
 		}
 	}
 
@@ -478,6 +512,9 @@ final class AppState: ObservableObject {
 	private var discordActivityState: DiscordActivityState = .idle
 	private var discordPresenceRetryTask: Task<Void, Never>?
 	private let gameDetector: GamePresenceDetector
+	private let appTriggerController = AppTriggerController()
+	/// The running capture was started by the app trigger (so only the trigger may end it).
+	@Published private(set) var appTriggerCaptureActive = false
 	private var gamePresenceTask: Task<Void, Never>?
 	private var automaticCaptureRetryTask: Task<Void, Never>?
 	/// Keeps the system content picker alive while it is presented (it is only an
@@ -518,6 +555,10 @@ final class AppState: ObservableObject {
 		self.analytics = analytics
 		self.hotkeyManager = hotkeyManager
 		gameDetector = GamePresenceDetector()
+
+		appTriggerController.onStart = { [weak self] in self?.startAppTriggeredCapture() }
+		appTriggerController.onStop = { [weak self] in self?.stopAppTriggeredCapture() }
+		appTriggerController.onTargetChanged = { [weak self] in self?.restartCaptureSilently() }
 
 		clipLibrary.objectWillChange.sink { [weak self] _ in
 			self?.objectWillChange.send()
@@ -562,6 +603,7 @@ final class AppState: ObservableObject {
 		selectedMicrophoneDeviceID = settings.microphoneDeviceID
 		outputDirectoryPath = settings.outputDirectoryPath
 		isRestoringSettings = false
+		configureAppTrigger()
 		refreshMicrophones()
 		AppLog.fileLoggingEnabled = fileLoggingEnabled
 		Task { [weak self] in
@@ -645,6 +687,8 @@ final class AppState: ObservableObject {
 		hotkey = settings.hotkey
 		startRecordingHotkey = settings.startRecordingHotkey
 		alwaysRecordEnabled = settings.alwaysRecordEnabled
+		appTriggerEnabled = false
+		watchedAppBundleIDs = []
 		saveFeedbackEnabled = settings.saveFeedbackEnabled
 		saveFeedbackVolume = settings.saveFeedbackVolume
 		saveFeedbackSound = settings.saveFeedbackSound
@@ -670,6 +714,8 @@ final class AppState: ObservableObject {
 		selectedMicrophoneDeviceID = settings.microphoneDeviceID
 		outputDirectoryPath = settings.outputDirectoryPath
 		isRestoringSettings = false
+		persistAppTriggerSettings()
+		configureAppTrigger()
 
 		persistSettings()
 		AppLog.fileLoggingEnabled = fileLoggingEnabled
@@ -696,8 +742,11 @@ final class AppState: ObservableObject {
 		startCapture(reason: isAutomatic ? .alwaysRecord : .manual)
 	}
 
+	/// Always Record and an app-triggered session end by turning the mode off, not by Stop.
+	var isStopLocked: Bool { alwaysRecordEnabled || appTriggerCaptureActive }
+
 	func stopCapture() {
-		guard !alwaysRecordEnabled else { return }
+		guard !isStopLocked else { return }
 		Task { await stopCaptureAsync() }
 	}
 
@@ -716,7 +765,7 @@ final class AppState: ObservableObject {
 
 	func toggleCapture() {
 		if isCapturing {
-			guard !alwaysRecordEnabled else { return }
+			guard !isStopLocked else { return }
 			stopCapture()
 		} else {
 			startCapture(isAutomatic: false)
@@ -841,7 +890,21 @@ final class AppState: ObservableObject {
 			// starts (retries) silently reuse the last selection so recording can
 			// resume without interrupting the user.
 			let contentFilter: UncheckedSendable<SCContentFilter>?
-			if isAutomatic {
+			var appTarget: WatchedTarget?
+			if appTriggerOwnsTarget(for: reason) {
+				let target = appTriggerController.currentTarget()
+				guard let filter = try await AppTriggerCaptureFilter.make(target: target) else {
+					// Nothing to capture yet (no visible window). Try again shortly.
+					isCapturing = false
+					updateDiscordActivity(.idle)
+					appTriggerController.startFailed(retryable: true, cooldown: AppTriggerController.noWindowCooldown)
+					return
+				}
+				// The app may have closed, or the mode been switched off, while this was built.
+				guard appTriggerController.isRecording else { return }
+				contentFilter = filter
+				appTarget = target
+			} else if isAutomatic {
 				contentFilter = lastContentFilter
 			} else if captureTargetPromptEnabled, #available(macOS 14.0, *) {
 				do {
@@ -866,6 +929,14 @@ final class AppState: ObservableObject {
 				microphoneDeviceID: selectedMicrophoneDeviceID
 			)
 			isCapturing = true
+			appTriggerCaptureActive = appTarget != nil
+			if let appTarget { appTriggerController.captureStarted(for: appTarget) }
+			// The app closed while the capture was starting, and its stop was ignored
+			// because nothing was running yet; end it now, nothing would later.
+			if appTarget != nil, !appTriggerController.isRecording {
+				stopAppTriggeredCapture()
+				return
+			}
 			let settings = analyticsSettingsSnapshot
 			Task { await analytics.captureSessionStarted(reason: reason, settings: settings) }
 			automaticRestartFailureCount = 0
@@ -877,6 +948,7 @@ final class AppState: ObservableObject {
 			automaticCaptureRetryTask?.cancel()
 		} catch {
 			isCapturing = false
+			appTriggerCaptureActive = false
 			updateDiscordActivity(.idle)
 			if case PermissionError.screenRecordingDenied = error {
 				// Refresh so the menu-bar permission banner reflects reality.
@@ -890,6 +962,12 @@ final class AppState: ObservableObject {
 					category: category,
 					retrying: willRetry
 				)
+			}
+
+			if appTriggerOwnsTarget(for: reason) {
+				// Retries for this mode come from the app tracker, not the generic retry below.
+				appTriggerController.startFailed(retryable: CaptureRetryPolicy.shouldRetry(after: error))
+				return
 			}
 
 			if isAutomatic {
@@ -928,8 +1006,58 @@ final class AppState: ObservableObject {
 		}
 	}
 
+	private func configureAppTrigger() {
+		appTriggerController.configure(enabled: appTriggerEnabled, watched: Set(watchedAppBundleIDs))
+	}
+
+	/// These two live in `Defaults` directly; `persistSettings()` no longer saves anything.
+	private func persistAppTriggerSettings() {
+		Defaults[.appTriggerEnabled] = appTriggerEnabled
+		Defaults[.watchedAppBundleIDs] = watchedAppBundleIDs
+	}
+
+	/// While an app-triggered session is active, every automatic start (the first one,
+	/// a retry after an interruption, a restart after a settings change) has to stay
+	/// scoped to the watched apps instead of falling back to a whole display.
+	private func appTriggerOwnsTarget(for reason: AnalyticsCaptureStartReason) -> Bool {
+		Self.appTriggerOwns(reason: reason, triggerIsRecording: appTriggerController.isRecording)
+	}
+
+	static func appTriggerOwns(reason: AnalyticsCaptureStartReason, triggerIsRecording: Bool) -> Bool {
+		reason == .appTrigger || (reason != .manual && triggerIsRecording)
+	}
+
+	private func startAppTriggeredCapture() {
+		Task { await startCaptureAsync(reason: .appTrigger) }
+	}
+
+	private func stopAppTriggeredCapture() {
+		// Only end a capture the trigger started, never a manual recording.
+		guard appTriggerCaptureActive else { return }
+		Task { await stopCaptureAsync(reason: .appClosed) }
+	}
+
+	private func performAppTriggeredRestart() async {
+		guard isCapturing, !isDisplayOrSystemAsleep else { return }
+		await captureManager.stop()
+		guard isCapturing, !isDisplayOrSystemAsleep else { return }
+		await startCaptureAsync(reason: .appTrigger)
+	}
+
+	/// Restarts capture on the target it already had: the watched apps for an
+	/// app-triggered session, otherwise the last picked content.
+	private func performRestart() async {
+		if appTriggerController.isRecording {
+			await performAppTriggeredRestart()
+		} else {
+			await performSilentRestart()
+		}
+	}
+
 	private func stopCaptureAsync(reason: AnalyticsCaptureEndReason = .manual) async {
 		automaticCaptureRetryTask?.cancel()
+		appTriggerCaptureActive = false
+		appTriggerController.captureStopped()
 		await captureManager.stop()
 		isCapturing = false
 		Task { await analytics.captureSessionEnded(reason: reason) }
@@ -957,7 +1085,7 @@ final class AppState: ObservableObject {
 		// Settings often change in bursts (quality then frame rate, ...). Coalesce
 		// them so restarts never overlap and the last one uses the latest settings.
 		silentRestartCoalescer.request { [weak self] in
-			await self?.performSilentRestart()
+			await self?.performRestart()
 		}
 	}
 
@@ -984,7 +1112,7 @@ final class AppState: ObservableObject {
 			return
 		}
 		silentRestartCoalescer.request({ [weak self] in
-			await self?.performSilentRestart()
+			await self?.performRestart()
 		}, completion: reset)
 	}
 
@@ -1201,6 +1329,8 @@ final class AppState: ObservableObject {
 			// flight, the wake's start (queued behind the stop) sets it back to
 			// true afterwards instead of this task clobbering it.
 			isCapturing = false
+			appTriggerCaptureActive = false
+			appTriggerController.captureStopped()
 			updateDiscordActivity(.idle)
 			Task {
 				await captureManager.stop()
@@ -1217,10 +1347,15 @@ final class AppState: ObservableObject {
 		if alwaysRecordEnabled, !isDisplayOrSystemAsleep {
 			startCapture(reason: .wake)
 		}
+		if appTriggerController.isRecording, !isDisplayOrSystemAsleep {
+			startAppTriggeredCapture()
+		}
 	}
 
 	private func handleCaptureInterrupted(_ error: Error) {
 		isCapturing = false
+		appTriggerCaptureActive = false
+		appTriggerController.captureStopped()
 		updateDiscordActivity(.idle)
 		if isDisplayOrSystemAsleep {
 			return

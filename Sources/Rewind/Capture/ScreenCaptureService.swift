@@ -164,7 +164,9 @@ final class ScreenCaptureService: NSObject, SCStreamOutput, @unchecked Sendable 
 
 		let targetResolution: CaptureResolution
 		if let resolution {
-			targetResolution = resolution
+			// The chosen resolution comes from the main display's size; map it onto
+			// what is really captured (another display, an app's windows).
+			targetResolution = resolution.matching(nativeWidth: nativeWidth, nativeHeight: nativeHeight)
 		} else {
 			targetResolution = .native(width: nativeWidth, height: nativeHeight)
 		}

@@ -137,6 +137,36 @@ private struct GeneralSettingsPane: View {
 private struct CaptureSettingsPane: View {
 	@ObservedObject var appState: AppState
 	let settingsLocked: Bool
+	@State private var installedApps: [InstalledAppCatalog.Entry] = []
+	@State private var runningApps: [InstalledAppCatalog.Entry] = []
+
+	private func appName(for bundleID: String) -> String {
+		(runningApps + installedApps).first { $0.bundleID == bundleID }?.name ?? bundleID
+	}
+
+	/// Running apps that aren't watched yet.
+	private var addableRunningApps: [InstalledAppCatalog.Entry] {
+		let watched = Set(appState.watchedAppBundleIDs)
+		return runningApps.filter { !watched.contains($0.bundleID) }
+	}
+
+	/// Installed apps that aren't watched yet and aren't already under "Running now".
+	private var addableInstalledApps: [InstalledAppCatalog.Entry] {
+		let skipped = Set(appState.watchedAppBundleIDs).union(runningApps.map(\.bundleID))
+		return installedApps.filter { !skipped.contains($0.bundleID) }
+	}
+
+	private func addAppButton(_ app: InstalledAppCatalog.Entry) -> some View {
+		Button(app.name) { appState.watchedAppBundleIDs.append(app.bundleID) }
+	}
+
+	/// Scanning the installed apps reads many Info.plist files, so it runs off the
+	/// main thread, and only once while this window is open.
+	private func loadApps() async {
+		runningApps = InstalledAppCatalog.runningApps()
+		guard installedApps.isEmpty else { return }
+		installedApps = await Task.detached(priority: .userInitiated) { InstalledAppCatalog.apps() }.value
+	}
 
 	private var replayDurationRange: ClosedRange<Int> {
 		Int(AppSettings.replayDurationRange.lowerBound) ... Int(AppSettings.replayDurationRange.upperBound)
@@ -193,6 +223,42 @@ private struct CaptureSettingsPane: View {
 						.toggleStyle(.switch)
 				} label: {
 					HelpLabel("Always record", help: "Automatically saves clips continuously in the background.")
+				}
+
+				LabeledContent {
+					Toggle("", isOn: $appState.appTriggerEnabled)
+						.labelsHidden()
+						.toggleStyle(.switch)
+				} label: {
+					HelpLabel(
+						"Record while an app is open",
+						help: "Records only while one of the apps below is running. Replaces Always record."
+					)
+				}
+
+				if appState.appTriggerEnabled {
+					ForEach(appState.watchedAppBundleIDs, id: \.self) { bundleID in
+						LabeledContent {
+							Button("Remove") {
+								appState.watchedAppBundleIDs.removeAll { $0 == bundleID }
+							}
+							.buttonStyle(.borderless)
+						} label: {
+							Text(appName(for: bundleID))
+						}
+					}
+
+					Menu("Add app") {
+						if !addableRunningApps.isEmpty {
+							Section("Running now") {
+								ForEach(addableRunningApps) { app in addAppButton(app) }
+							}
+						}
+						Section("Installed") {
+							ForEach(addableInstalledApps) { app in addAppButton(app) }
+						}
+					}
+					.task { await loadApps() }
 				}
 			}
 			.disabled(settingsLocked)

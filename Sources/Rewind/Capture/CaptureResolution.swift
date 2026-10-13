@@ -49,6 +49,26 @@ struct CaptureResolution: Hashable, Identifiable {
 			isNative: false
 		)
 	}
+
+	/// This choice applied to what is actually being captured.
+	///
+	/// The resolution list is worked out from the main display, but the target can
+	/// be another display or a window of a different size. "Native" then means the
+	/// target's own pixels, and a scaled preset keeps its height while taking the
+	/// target's aspect ratio, so the video isn't letterboxed or stretched into the
+	/// main display's shape.
+	func matching(nativeWidth: Int, nativeHeight: Int) -> CaptureResolution {
+		let native = CaptureResolution.native(width: nativeWidth, height: nativeHeight)
+		guard !isNative, nativeWidth > 0, nativeHeight > 0, height < nativeHeight else { return native }
+
+		let scaledWidth = Int((CGFloat(height) * CGFloat(nativeWidth) / CGFloat(nativeHeight)).rounded())
+		let alignedWidth = max(2, scaledWidth - (scaledWidth % 2))
+		let alignedHeight = max(2, height - (height % 2))
+		guard alignedWidth < nativeWidth else { return native }
+
+		let name = label.prefix { $0 != "(" }.trimmingCharacters(in: .whitespaces)
+		return .scaled(label: name, width: alignedWidth, height: alignedHeight)
+	}
 }
 
 /// provides available resolutions for screen capture

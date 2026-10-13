@@ -6,6 +6,7 @@ Rewind is a free, open-source macOS app for instantly clipping highlights of you
 
 - **Instant Replay Capture:** Save the last X seconds of your gameplay instantly (customizable duration).
 - **Always Record Mode:** Optionally record continuously so you never miss a moment.
+- **Record While an App Is Open:** Pick one or more apps (installed or already running) in **Settings -> Record while an app is open** and Rewind records only while one of them is running. It captures just those apps' windows on whichever display they are on (your Mac's screen or an external monitor), and follows them if you move them to another display, switching to that display's resolution and aspect ratio ("Native" is the recorded display's own size; a resolution preset keeps its height). It starts silently when they open and stops a few seconds after they close. This replaces Always Record while it's on.
 - **Customizable Quality:** Adjust resolution, frame rate, audio codec and container format to suit your needs.
 - **Microphone and desktop audio in one track:** Saved clips mix your mic and desktop audio into a single audio track so everyone hears both, with separate **Desktop volume** and **Microphone volume** sliders in Settings.
 - **Global Hotkeys:** Configure custom hotkeys for starting/stopping recording and saving replays.

@@ -3,6 +3,7 @@ import Foundation
 enum AnalyticsCaptureStartReason: String {
 	case manual
 	case alwaysRecord = "always_record"
+	case appTrigger = "app_trigger"
 	case wake
 	case retry
 }
@@ -12,6 +13,7 @@ enum AnalyticsCaptureEndReason: String {
 	case sleep
 	case interrupted
 	case restarted
+	case appClosed = "app_closed"
 }
 
 struct AnalyticsSettingsSnapshot {

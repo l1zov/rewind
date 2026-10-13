@@ -119,11 +119,14 @@ struct MenuBarView: View {
 		if appState.alwaysRecordEnabled {
 			return appState.isCapturing ? "Recording (Always)" : "Start Recording"
 		}
+		if appState.appTriggerCaptureActive {
+			return "Recording (App)"
+		}
 		return appState.isCapturing ? "Stop Recording" : "Start Recording"
 	}
 
 	private var recordingButtonDisabled: Bool {
-		appState.alwaysRecordEnabled && appState.isCapturing
+		appState.isStopLocked && appState.isCapturing
 	}
 
 	@ViewBuilder
